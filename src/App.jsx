@@ -181,40 +181,47 @@ export default function App() {
 
   function exportXLSX() {
     try {
-      // Prefer exporting the actual DOM table for maximum fidelity
-      const table = tableRef.current;
-      let wb;
-      if (table) {
-        wb = XLSX.utils.table_to_book(table, { sheet: "Table", raw: true });
-      } else {
-        // Fallback: rebuild from grid if ref missing
-        const aoa = buildTableAOA(grid, S, P, totals);
-        const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
-        wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, wsBefore, "Table");
-      }
+      // Always use grid data for accurate values (DOM table can't read input values properly)
+      const aoa = buildTableAOA(grid, S, P, totals);
+      const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsBefore, "Table");
 
-      // Summary sheet
+      // Summary sheet with enhanced statistics
       const rMx = totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0);
       const rMn = totals.reduce((a, t, i) => (t < totals[a] ? i : a), 0);
       const spreadVal = (totals[rMx] ?? 0) - (totals[rMn] ?? 0);
+      const avgCapacity = totals.length > 0 ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
+      const totalCapacity = totals.reduce((a, b) => a + b, 0);
+      
       const wsSummary = XLSX.utils.aoa_to_sheet([
-        ["Metric", "Value"],
-        ["Rows (S)", S],
-        ["Columns (P)", P],
-        ["Max row (S#)", rMx + 1],
-        ["Min row (S#)", rMn + 1],
+        ["AH Balancer - Summary Report", ""],
+        ["Export Date", new Date().toLocaleString()],
+        ["", ""],
+        ["Configuration", ""],
+        ["Rows (Series)", S],
+        ["Columns (Parallel)", P],
+        ["Tolerance (mAh)", tolerance],
+        ["", ""],
+        ["Statistics", ""],
+        ["Total Capacity (mAh)", Math.round(totalCapacity)],
+        ["Average Row Capacity (mAh)", Math.round(avgCapacity)],
+        ["Max Row (S#)", rMx + 1],
+        ["Max Row Capacity (mAh)", Math.round(totals[rMx] ?? 0)],
+        ["Min Row (S#)", rMn + 1],
+        ["Min Row Capacity (mAh)", Math.round(totals[rMn] ?? 0)],
         ["Spread (mAh)", Math.round(spreadVal)],
+        ["Balance Status", spreadVal <= tolerance ? "Within Tolerance" : "Needs Optimization"],
       ]);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
       const xblob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
       const url = URL.createObjectURL(new Blob([xblob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
-      a.href = url;
+    a.href = url;
       a.download = `AH_Balancer_${S}Sx${P}P.xlsx`;
       document.body.appendChild(a);
-      a.click();
+    a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
@@ -255,16 +262,16 @@ export default function App() {
         <div className="space-y-2">
           <label className="text-sm font-medium">Series (S)</label>
           <input type="number" min={1} value={S} onChange={(e) => setS(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
-        </div>
+              </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Parallel (P)</label>
           <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
-        </div>
+              </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Tolerance (mAh)</label>
           <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full border rounded-2xl px-3 py-2" />
-        </div>
-      </div>
+            </div>
+          </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="space-y-2">
@@ -273,8 +280,8 @@ export default function App() {
           <div className="flex gap-2">
             <button onClick={loadFromPaste} className="px-4 py-2 rounded-2xl border">Load from Paste</button>
             <button onClick={randomize} className="px-4 py-2 rounded-2xl border">Generate Demo Data</button>
-          </div>
-        </div>
+              </div>
+              </div>
         <div className="space-y-3 p-4 rounded-2xl border">
           <div className="text-sm">Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
           <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
@@ -286,7 +293,7 @@ export default function App() {
                 <button onClick={applySuggestedSwap} className="px-4 py-2 rounded-2xl border">Apply Suggested Swap</button>
                 <button onClick={iterateToTolerance} className="px-4 py-2 rounded-2xl border">Iterate to Tolerance</button>
               </div>
-            </div>
+              </div>
           ) : (
             <div className="text-sm text-gray-500">Enter data to see a suggestion.</div>
           )}
@@ -309,8 +316,8 @@ export default function App() {
                 <th key={j} className="px-3 py-2">P{j + 1}</th>
               ))}
               <th className="px-3 py-2">Total (mAh)</th>
-            </tr>
-          </thead>
+                  </tr>
+                </thead>
           <tbody>
             {grid.map((row, i) => {
               const isMax = i === rMax;
@@ -334,11 +341,11 @@ export default function App() {
                     );
                   })}
                   <td className="px-3 py-2 font-semibold">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
-                </tr>
+                    </tr>
               );
             })}
-          </tbody>
-        </table>
+                </tbody>
+              </table>
       </div>
 
       <div className="text-xs text-gray-500">
