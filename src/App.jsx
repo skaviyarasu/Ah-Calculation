@@ -289,14 +289,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-white text-gray-900 p-6 space-y-6">
-      <motion.h1 initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="text-2xl font-semibold">
-        AH Balancer — Interactive Optimizer
-      </motion.h1>
-
-      {/* Job Information Section */}
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-4">
-        <h2 className="text-lg font-medium text-blue-800 mb-3">Job Information</h2>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-lg shadow-lg p-6 space-y-6"
+        >
+          <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
+            AH Balancer — Interactive Optimizer
+          </h1>
+          
+          {/* Job Information Section */}
+          <div className="mb-6 bg-blue-50 p-4 rounded-lg">
+            <h2 className="text-xl font-semibold text-blue-800 mb-4">Job Information</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Customer Name</label>
@@ -304,7 +310,7 @@ export default function App() {
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full border rounded-xl px-3 py-2"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Enter customer name"
             />
           </div>
@@ -314,7 +320,7 @@ export default function App() {
               type="text"
               value={jobCard}
               onChange={(e) => setJobCard(e.target.value)}
-              className="w-full border rounded-xl px-3 py-2"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Enter job card number"
             />
           </div>
@@ -324,7 +330,7 @@ export default function App() {
               type="date"
               value={jobDate}
               onChange={(e) => setJobDate(e.target.value)}
-              className="w-full border rounded-xl px-3 py-2"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
           <div className="space-y-2">
@@ -333,38 +339,38 @@ export default function App() {
               type="text"
               value={batterySpec}
               onChange={(e) => setBatterySpec(e.target.value)}
-              className="w-full border rounded-xl px-3 py-2"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="e.g., 48V 100Ah LiFePO4"
-            />
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="grid md:grid-cols-3 gap-4 items-end">
+          <div className="grid md:grid-cols-3 gap-4 items-end">
         <div className="space-y-2">
           <label className="text-sm font-medium">Series (S)</label>
-          <input type="number" min={1} value={S} onChange={(e) => setS(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
-              </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Parallel (P)</label>
-          <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
-            </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Tolerance (mAh)</label>
-          <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full border rounded-2xl px-3 py-2" />
+            <input type="number" min={1} value={S} onChange={(e) => setS(Number(e.target.value) || 1)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Parallel (P)</label>
+            <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Tolerance (mAh)</label>
+            <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             </div>
           </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Paste CSV / TSV (auto-detect)</label>
-          <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={6} className="w-full border rounded-2xl px-3 py-2" placeholder={"4350,4389,4472\n4430,4451,4403"} />
-          <div className="flex gap-2">
-            <button onClick={loadFromPaste} className="px-4 py-2 rounded-2xl border">Load from Paste</button>
-            <button onClick={randomize} className="px-4 py-2 rounded-2xl border">Generate Demo Data</button>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Paste CSV / TSV (auto-detect)</label>
+              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={6} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder={"4350,4389,4472\n4430,4451,4403"} />
+              <div className="flex gap-2">
+                <button onClick={loadFromPaste} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors">Load from Paste</button>
+                <button onClick={randomize} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors">Generate Demo Data</button>
               </div>
               </div>
-        <div className="space-y-3 p-4 rounded-2xl border">
+            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
           <div className="text-sm">Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
           <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
           {suggestion ? (
@@ -372,8 +378,8 @@ export default function App() {
               Suggested swap: <b>S{suggestion.rMax + 1}:P{suggestion.cFromMax + 1}</b> ↔ <b>S{suggestion.rMin + 1}:P{suggestion.cFromMin + 1}</b>
               <div>Improvement: <b>{Math.round(suggestion.improvement)}</b> mAh | After spread: <b>{Math.round(suggestion.afterSpread)}</b> mAh</div>
               <div className="flex gap-2 mt-2">
-                <button onClick={applySuggestedSwap} className="px-4 py-2 rounded-2xl border">Apply Suggested Swap</button>
-                <button onClick={iterateToTolerance} className="px-4 py-2 rounded-2xl border">Iterate to Tolerance</button>
+                <button onClick={applySuggestedSwap} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors">Apply Suggested Swap</button>
+                <button onClick={iterateToTolerance} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md transition-colors">Iterate to Tolerance</button>
               </div>
               </div>
           ) : (
@@ -382,61 +388,63 @@ export default function App() {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 mb-2">
-        <button onClick={copyTableTSV} className="px-4 py-2 rounded-2xl border">Copy Table TSV</button>
-        <button onClick={copyTableCSV} className="px-4 py-2 rounded-2xl border">Copy Table CSV</button>
-        <button onClick={exportCSV} className="px-4 py-2 rounded-2xl border">Export Table CSV</button>
-        <button onClick={exportXLSX} className="px-4 py-2 rounded-2xl border">Export Table Excel</button>
-      </div>
+          <div className="flex items-center justify-end gap-2 mb-2">
+            <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors">Copy Table TSV</button>
+            <button onClick={copyTableCSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors">Copy Table CSV</button>
+            <button onClick={exportCSV} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors">Export Table CSV</button>
+            <button onClick={exportXLSX} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors">Export Table Excel</button>
+          </div>
 
-      <div className="overflow-auto border rounded-2xl">
-        <table ref={tableRef} className="min-w-full text-sm">
-          <thead>
-            <tr>
-              <th className="px-3 py-2 text-left sticky left-0 bg-white z-10">Series\\Parallel</th>
-              {Array.from({ length: P }).map((_, j) => (
-                <th key={j} className="px-3 py-2">P{j + 1}</th>
-              ))}
-              <th className="px-3 py-2">Total (mAh)</th>
+          <div className="overflow-x-auto">
+            <table ref={tableRef} className="min-w-full bg-white border border-gray-200 rounded-lg text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">Series\\Parallel</th>
+                  {Array.from({ length: P }).map((_, j) => (
+                    <th key={j} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">P{j + 1}</th>
+                  ))}
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total (mAh)</th>
                   </tr>
                 </thead>
-          <tbody>
-            {grid.map((row, i) => {
-              const isMax = i === rMax;
-              const isMin = i === rMin;
-              return (
-                <tr key={i} className={`${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
-                  <td className="px-3 py-2 font-medium sticky left-0 bg-white z-10">S{i + 1}</td>
-                  {row.map((v, j) => {
-                    const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
-                    const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
-                    const common = "px-3 py-1 border rounded-xl w-24";
-                    return (
-                      <td key={j} className="px-2 py-2">
-                        <input
-                          className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""}`}
-                          value={isFinite(v) ? v : ""}
-                          onChange={(e) => handleCellChange(i, j, e.target.value)}
-                          inputMode="numeric"
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-2 font-semibold">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
+              <tbody className="divide-y divide-gray-200">
+                {grid.map((row, i) => {
+                  const isMax = i === rMax;
+                  const isMin = i === rMin;
+                  return (
+                    <tr key={i} className={`hover:bg-gray-50 ${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10">S{i + 1}</td>
+                      {row.map((v, j) => {
+                        const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
+                        const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
+                        const common = "w-full p-2 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent";
+                        return (
+                          <td key={j} className="px-2 py-1">
+                            <input
+                              className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""}`}
+                              value={isFinite(v) ? v : ""}
+                              onChange={(e) => handleCellChange(i, j, e.target.value)}
+                              inputMode="numeric"
+                            />
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-3 text-sm font-bold text-green-600 text-center">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
                     </tr>
-              );
-            })}
-                </tbody>
-              </table>
-      </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-      <div className="text-xs text-gray-500">
-        Tips:
-        <ul className="list-disc ml-5 space-y-1 mt-1">
-          <li>Paste a 13×7 matrix (or change S/P first) and click <b>Load from Paste</b>.</li>
-          <li>Yellow ring = cell to <b>swap out</b> from the current <b>max</b> row; Blue ring = cell to <b>swap in</b> to the current <b>min</b> row.</li>
-          <li>Click <b>Apply Suggested Swap</b> to mutate the grid; re-run until spread ≤ tolerance using <b>Iterate to Tolerance</b>.</li>
-        </ul>
+          <div className="text-xs text-gray-500">
+            Tips:
+            <ul className="list-disc ml-5 space-y-1 mt-1">
+              <li>Paste a 13×7 matrix (or change S/P first) and click <b>Load from Paste</b>.</li>
+              <li>Yellow ring = cell to <b>swap out</b> from the current <b>max</b> row; Blue ring = cell to <b>swap in</b> to the current <b>min</b> row.</li>
+              <li>Click <b>Apply Suggested Swap</b> to mutate the grid; re-run until spread ≤ tolerance using <b>Iterate to Tolerance</b>.</li>
+            </ul>
+          </div>
+        </motion.div>
       </div>
     </div>
   );
