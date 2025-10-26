@@ -395,45 +395,45 @@ export default function App() {
             <button onClick={exportXLSX} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors">Export Table Excel</button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table ref={tableRef} className="min-w-full bg-white border border-gray-200 rounded-lg text-sm">
-                <thead className="bg-gray-50">
+          <div className="overflow-auto border rounded-2xl">
+            <table ref={tableRef} className="min-w-full text-sm">
+                <thead>
                   <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">Series\\Parallel</th>
-                  {Array.from({ length: P }).map((_, j) => (
-                    <th key={j} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">P{j + 1}</th>
-                  ))}
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total (mAh)</th>
+                    <th className="px-3 py-2 text-left sticky left-0 bg-white z-10">Series\\Parallel</th>
+                    {Array.from({ length: P }).map((_, j) => (
+                      <th key={j} className="px-3 py-2">P{j + 1}</th>
+                    ))}
+                    <th className="px-3 py-2">Total (mAh)</th>
                   </tr>
                 </thead>
-              <tbody className="divide-y divide-gray-200">
-                {grid.map((row, i) => {
-                  const isMax = i === rMax;
-                  const isMin = i === rMin;
-                  return (
-                    <tr key={i} className={`hover:bg-gray-50 ${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10">S{i + 1}</td>
+                <tbody>
+                  {grid.map((row, i) => {
+                    const isMax = i === rMax;
+                    const isMin = i === rMin;
+                    return (
+                      <tr key={i} className={`${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
+                        <td className="px-3 py-2 font-medium sticky left-0 bg-white z-10">S{i + 1}</td>
                       {row.map((v, j) => {
                         const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
                         const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
-                        const common = "w-full p-2 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent";
+                        const common = "px-3 py-1 border rounded-xl w-24";
                         return (
-                          <td key={j} className="px-2 py-1">
-                            <input
+                          <td key={j} className="px-2 py-2">
+                        <input
                               className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""}`}
                               value={isFinite(v) ? v : ""}
                               onChange={(e) => handleCellChange(i, j, e.target.value)}
                               inputMode="numeric"
-                            />
-                          </td>
+                        />
+                      </td>
                         );
                       })}
-                      <td className="px-4 py-3 text-sm font-bold text-green-600 text-center">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
+                      <td className="px-3 py-2 font-semibold">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
           </div>
 
           <div className="text-xs text-gray-500">
