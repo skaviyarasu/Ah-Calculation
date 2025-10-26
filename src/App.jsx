@@ -84,9 +84,27 @@ function applySwap(grid, swap) {
 }
 
 // Build the current visible table as an array-of-arrays
-function buildTableAOA(grid, S, P, totals) {
+function buildTableAOA(grid, S, P, totals, metadata = null) {
+  const aoa = [];
+  
+  // Add metadata header if provided
+  if (metadata) {
+    aoa.push(["AH Balancer - Battery Optimization Report"]);
+    aoa.push([""]);
+    aoa.push(["Customer:", metadata.customerName || ""]);
+    aoa.push(["Job Card #:", metadata.jobCard || ""]);
+    aoa.push(["Date:", metadata.jobDate || ""]);
+    aoa.push(["Battery Spec:", metadata.batterySpec || ""]);
+    aoa.push([""]);
+    aoa.push(["Capacity Matrix (mAh):"]);
+    aoa.push([""]);
+  }
+  
+  // Add table header
   const header = ["Series/Parallel", ...Array.from({ length: P }, (_, j) => `P${j + 1}`), "Total (mAh)"];
-  const aoa = [header];
+  aoa.push(header);
+  
+  // Add data rows
   for (let i = 0; i < S; i++) {
     const row = [`S${i + 1}`];
     for (let j = 0; j < P; j++) row.push(isFinite(grid[i]?.[j]) ? grid[i][j] : "");
@@ -104,6 +122,12 @@ export default function App() {
   const [grid, setGrid] = useState(() => Array.from({ length: 13 }, () => Array.from({ length: 7 }, () => NaN)));
   const [pasteText, setPasteText] = useState("");
   const tableRef = useRef(null);
+
+  // Job/Customer metadata
+  const [customerName, setCustomerName] = useState("");
+  const [jobCard, setJobCard] = useState("");
+  const [jobDate, setJobDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [batterySpec, setBatterySpec] = useState("");
 
   // Ensure grid matches SxP
   useEffect(() => {
@@ -142,13 +166,15 @@ export default function App() {
 
   function exportCSV() {
     try {
-      const aoa = buildTableAOA(grid, S, P, totals);
+      const metadata = { customerName, jobCard, jobDate, batterySpec };
+      const aoa = buildTableAOA(grid, S, P, totals, metadata);
       const csv = aoa.map((row) => row.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
+      const filename = `AH_Balancer_${jobCard || 'Job'}_${S}Sx${P}P.csv`;
       a.href = url;
-      a.download = `AH_Balancer_${S}Sx${P}P_table.csv`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -160,7 +186,8 @@ export default function App() {
   }
 
   function copyTableCSV() {
-    const aoa = buildTableAOA(grid, S, P, totals);
+    const metadata = { customerName, jobCard, jobDate, batterySpec };
+    const aoa = buildTableAOA(grid, S, P, totals, metadata);
     const text = aoa.map((row) => row.join(",")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as CSV."));
     else {
@@ -170,7 +197,8 @@ export default function App() {
   }
 
   function copyTableTSV() {
-    const aoa = buildTableAOA(grid, S, P, totals);
+    const metadata = { customerName, jobCard, jobDate, batterySpec };
+    const aoa = buildTableAOA(grid, S, P, totals, metadata);
     const text = aoa.map((row) => row.join("\t")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as TSV."));
     else {
@@ -182,10 +210,11 @@ export default function App() {
   function exportXLSX() {
     try {
       // Always use grid data for accurate values (DOM table can't read input values properly)
-      const aoa = buildTableAOA(grid, S, P, totals);
+      const metadata = { customerName, jobCard, jobDate, batterySpec };
+      const aoa = buildTableAOA(grid, S, P, totals, metadata);
       const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, wsBefore, "Table");
+      XLSX.utils.book_append_sheet(wb, wsBefore, "Report");
 
       // Summary sheet with enhanced statistics
       const rMx = totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0);
@@ -195,33 +224,40 @@ export default function App() {
       const totalCapacity = totals.reduce((a, b) => a + b, 0);
       
       const wsSummary = XLSX.utils.aoa_to_sheet([
-        ["AH Balancer - Summary Report", ""],
-        ["Export Date", new Date().toLocaleString()],
+        ["AH Balancer - Job Summary", ""],
+        ["Generated", new Date().toLocaleString()],
+        ["", ""],
+        ["Job Information", ""],
+        ["Customer Name", customerName || "Not specified"],
+        ["Job Card #", jobCard || "Not specified"],
+        ["Job Date", jobDate || "Not specified"],
+        ["Battery Specification", batterySpec || "Not specified"],
         ["", ""],
         ["Configuration", ""],
         ["Rows (Series)", S],
         ["Columns (Parallel)", P],
         ["Tolerance (mAh)", tolerance],
         ["", ""],
-        ["Statistics", ""],
+        ["Analysis Results", ""],
         ["Total Capacity (mAh)", Math.round(totalCapacity)],
         ["Average Row Capacity (mAh)", Math.round(avgCapacity)],
         ["Max Row (S#)", rMx + 1],
         ["Max Row Capacity (mAh)", Math.round(totals[rMx] ?? 0)],
         ["Min Row (S#)", rMn + 1],
         ["Min Row Capacity (mAh)", Math.round(totals[rMn] ?? 0)],
-        ["Spread (mAh)", Math.round(spreadVal)],
-        ["Balance Status", spreadVal <= tolerance ? "Within Tolerance" : "Needs Optimization"],
+        ["Current Spread (mAh)", Math.round(spreadVal)],
+        ["Balance Status", spreadVal <= tolerance ? "✓ Within Tolerance" : "⚠ Needs Optimization"],
       ]);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
       const xblob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
       const url = URL.createObjectURL(new Blob([xblob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
-    a.href = url;
-      a.download = `AH_Balancer_${S}Sx${P}P.xlsx`;
+      const filename = `AH_Balancer_${jobCard || 'Job'}_${S}Sx${P}P.xlsx`;
+      a.href = url;
+      a.download = filename;
       document.body.appendChild(a);
-    a.click();
+      a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
@@ -258,6 +294,52 @@ export default function App() {
         AH Balancer — Interactive Optimizer
       </motion.h1>
 
+      {/* Job Information Section */}
+      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 space-y-4">
+        <h2 className="text-lg font-medium text-blue-800 mb-3">Job Information</h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Customer Name</label>
+            <input
+              type="text"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2"
+              placeholder="Enter customer name"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Job Card #</label>
+            <input
+              type="text"
+              value={jobCard}
+              onChange={(e) => setJobCard(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2"
+              placeholder="Enter job card number"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Date</label>
+                <input
+              type="date"
+              value={jobDate}
+              onChange={(e) => setJobDate(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2"
+                />
+              </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Battery Specification</label>
+                <input
+              type="text"
+              value={batterySpec}
+              onChange={(e) => setBatterySpec(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2"
+              placeholder="e.g., 48V 100Ah LiFePO4"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="grid md:grid-cols-3 gap-4 items-end">
         <div className="space-y-2">
           <label className="text-sm font-medium">Series (S)</label>
@@ -266,7 +348,7 @@ export default function App() {
         <div className="space-y-2">
           <label className="text-sm font-medium">Parallel (P)</label>
           <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
-              </div>
+            </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Tolerance (mAh)</label>
           <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full border rounded-2xl px-3 py-2" />
