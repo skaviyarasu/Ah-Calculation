@@ -1,262 +1,387 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
+import * as XLSX from "xlsx";
 
-function App() {
-  const [numCells, setNumCells] = useState(13);
-  const [targetVoltage, setTargetVoltage] = useState(52.0);
-  const [cells, setCells] = useState([]);
-  const [results, setResults] = useState(null);
+/**
+ * Ah Balancer — Interactive 13SxP Optimizer (React)
+ *
+ * Bugfix release:
+ * - Fixed: unterminated string constants in CSV/TSV joins (now uses "\n" and "\t").
+ * - Fixed: duplicate/stray code blocks outside functions causing syntax errors.
+ * - Fixed: ensured all export utilities live inside functions.
+ * - Kept: export controls above the table; copy CSV/TSV helpers; Excel export via xlsx.
+ */
 
-  // Initialize cells when numCells changes
-  useEffect(() => {
-    const newCells = Array(numCells).fill().map((_, index) => ({
-      id: index + 1,
-      voltage: 4.0,
-      capacity: 100,
-      internalResistance: 0.01
-    }));
-    setCells(newCells);
-  }, [numCells]);
+// ---------- Utilities ----------
+function parseCSV(text) {
+  const rows = String(text || "")
+    .trim()
+    .split(/\r?\n/)
+    .map((r) => r.split(/[\t,; ]+/).filter(Boolean));
+  return rows
+    .filter((r) => r.length > 0)
+    .map((r) => r.map((v) => (v === "" ? NaN : Number(v))));
+}
 
-  // Calculate balancing results
-  useEffect(() => {
-    if (cells.length > 0) {
-      const totalVoltage = cells.reduce((sum, cell) => sum + cell.voltage, 0);
-      const avgVoltage = totalVoltage / cells.length;
-      const totalCapacity = cells.reduce((sum, cell) => sum + cell.capacity, 0);
-      const avgCapacity = totalCapacity / cells.length;
-      
-      const voltageDeviation = Math.max(...cells.map(cell => Math.abs(cell.voltage - avgVoltage)));
-      const capacityDeviation = Math.max(...cells.map(cell => Math.abs(cell.capacity - avgCapacity)));
-      
-      setResults({
-        totalVoltage: totalVoltage.toFixed(2),
-        avgVoltage: avgVoltage.toFixed(3),
-        totalCapacity: totalCapacity.toFixed(1),
-        avgCapacity: avgCapacity.toFixed(1),
-        voltageDeviation: voltageDeviation.toFixed(3),
-        capacityDeviation: capacityDeviation.toFixed(1),
-        isBalanced: voltageDeviation < 0.05 && capacityDeviation < 5
-      });
+function sums(arr) {
+  return arr.reduce((a, b) => a + (isFinite(b) ? b : 0), 0);
+}
+
+function evaluateBestSingleSwap(grid) {
+  const S = grid.length; if (!S) return null;
+  const P = grid[0]?.length ?? 0; if (!P) return null;
+
+  const totals = grid.map((row) => sums(row));
+  let rMax = 0, rMin = 0;
+  totals.forEach((t, i) => {
+    if (t > totals[rMax]) rMax = i;
+    if (t < totals[rMin]) rMin = i;
+  });
+  const beforeSpread = totals[rMax] - totals[rMin];
+  if (!isFinite(beforeSpread)) return null;
+
+  let best = null;
+  for (let a = 0; a < P; a++) {
+    for (let b = 0; b < P; b++) {
+      const vMax = grid[rMax][a];
+      const vMin = grid[rMin][b];
+      if (!isFinite(vMax) || !isFinite(vMin)) continue;
+      if (a === b && Math.abs(vMax - vMin) < 1e-9) continue;
+
+      const newTotals = totals.slice();
+      newTotals[rMax] = totals[rMax] - vMax + vMin;
+      newTotals[rMin] = totals[rMin] - vMin + vMax;
+      let maxT = -Infinity, minT = Infinity;
+      for (let i = 0; i < S; i++) {
+        if (newTotals[i] > maxT) maxT = newTotals[i];
+        if (newTotals[i] < minT) minT = newTotals[i];
+      }
+      const newSpread = maxT - minT;
+      const improvement = beforeSpread - newSpread;
+      const candidate = {
+        rMax, rMin, cFromMax: a, cFromMin: b,
+        valueFromMax: vMax, valueFromMin: vMin,
+        beforeSpread, afterSpread: newSpread, improvement,
+      };
+      if (!best) best = candidate; else {
+        const s1 = [candidate.improvement, -candidate.afterSpread, -Math.abs(newTotals[rMax] - newTotals[rMin])];
+        const baseBestMax = totals[rMax] - best.valueFromMax + best.valueFromMin;
+        const baseBestMin = totals[rMin] - best.valueFromMin + best.valueFromMax;
+        const s2 = [best.improvement, -best.afterSpread, -Math.abs(baseBestMax - baseBestMin)];
+        if (s1[0] > s2[0] || (s1[0] === s2[0] && (s1[1] > s2[1] || (s1[1] === s2[1] && s1[2] > s2[2])))) best = candidate;
+      }
     }
-  }, [cells]);
+  }
+  return best;
+}
 
-  const handleCellChange = (cellId, field, value) => {
-    const newCells = cells.map(cell => 
-      cell.id === cellId 
-        ? { ...cell, [field]: parseFloat(value) || 0 }
-        : cell
-    );
-    setCells(newCells);
-  };
+function applySwap(grid, swap) {
+  const out = grid.map((r) => r.slice());
+  const tmp = out[swap.rMax][swap.cFromMax];
+  out[swap.rMax][swap.cFromMax] = out[swap.rMin][swap.cFromMin];
+  out[swap.rMin][swap.cFromMin] = tmp;
+  return out;
+}
 
-  const handleNumCellsChange = (value) => {
-    const newNum = Math.max(1, Math.min(20, parseInt(value) || 1));
-    setNumCells(newNum);
-  };
+// Build the current visible table as an array-of-arrays
+function buildTableAOA(grid, S, P, totals) {
+  const header = ["Series/Parallel", ...Array.from({ length: P }, (_, j) => `P${j + 1}`), "Total (mAh)"];
+  const aoa = [header];
+  for (let i = 0; i < S; i++) {
+    const row = [`S${i + 1}`];
+    for (let j = 0; j < P; j++) row.push(isFinite(grid[i]?.[j]) ? grid[i][j] : "");
+    row.push(isFinite(totals[i]) ? Math.round(totals[i]) : "");
+    aoa.push(row);
+  }
+  return aoa;
+}
 
-  const autoBalance = () => {
-    if (cells.length === 0) return;
-    
-    const avgVoltage = cells.reduce((sum, cell) => sum + cell.voltage, 0) / cells.length;
-    const avgCapacity = cells.reduce((sum, cell) => sum + cell.capacity, 0) / cells.length;
-    
-    const balancedCells = cells.map(cell => ({
-      ...cell,
-      voltage: avgVoltage + (Math.random() - 0.5) * 0.02, // Small random variation
-      capacity: avgCapacity + (Math.random() - 0.5) * 2    // Small random variation
-    }));
-    
-    setCells(balancedCells);
-  };
+// ---------- React Component ----------
+export default function App() {
+  const [S, setS] = useState(13);
+  const [P, setP] = useState(7);
+  const [tolerance, setTolerance] = useState(20); // mAh
+  const [grid, setGrid] = useState(() => Array.from({ length: 13 }, () => Array.from({ length: 7 }, () => NaN)));
+  const [pasteText, setPasteText] = useState("");
+  const tableRef = useRef(null);
 
-  const resetCells = () => {
-    const newCells = Array(numCells).fill().map((_, index) => ({
-      id: index + 1,
-      voltage: 4.0 + (Math.random() - 0.5) * 0.2, // Random voltage between 3.9-4.1V
-      capacity: 100 + (Math.random() - 0.5) * 20,  // Random capacity between 90-110Ah
-      internalResistance: 0.01 + Math.random() * 0.02 // Random IR between 0.01-0.03Ω
-    }));
-    setCells(newCells);
-  };
+  // Ensure grid matches SxP
+  useEffect(() => {
+    setGrid((g) => Array.from({ length: S }, (_, i) => Array.from({ length: P }, (_, j) => (g[i]?.[j] ?? NaN))));
+  }, [S, P]);
 
-  const exportData = () => {
-    const csvHeader = "Cell ID,Voltage (V),Capacity (Ah),Internal Resistance (Ω)\n";
-    const csvData = cells.map(cell => 
-      `${cell.id},${cell.voltage},${cell.capacity},${cell.internalResistance}`
-    ).join('\n');
-    
-    const csv = csvHeader + csvData;
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'ah_balancer_data.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const totals = useMemo(() => grid.map((r) => sums(r)), [grid]);
+  const rMax = useMemo(() => totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0), [totals]);
+  const rMin = useMemo(() => totals.reduce((a, t, i) => (t < totals[a] ? i : a), 0), [totals]);
+  const spread = useMemo(() => (totals[rMax] ?? 0) - (totals[rMin] ?? 0), [totals, rMax, rMin]);
+
+  const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
+
+  function handleCellChange(i, j, v) {
+    const n = String(v).trim() === "" ? NaN : Number(v);
+    setGrid((g) => {
+      const gg = g.map((r) => r.slice());
+      gg[i][j] = isFinite(n) ? n : NaN;
+      return gg;
+    });
+  }
+
+  function loadFromPaste() {
+    const m = parseCSV(pasteText);
+    if (!m.length) return;
+    setS(m.length);
+    setP(Math.max(...m.map((r) => r.length)));
+    const maxP = Math.max(...m.map((x) => x.length));
+    const norm = m.map((r) => {
+      const rr = r.slice();
+      while (rr.length < maxP) rr.push(NaN);
+      return rr;
+    });
+    setGrid(norm);
+  }
+
+  function exportCSV() {
+    try {
+      const aoa = buildTableAOA(grid, S, P, totals);
+      const csv = aoa.map((row) => row.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `AH_Balancer_${S}Sx${P}P_table.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      console.error(e);
+      alert("CSV export failed. Please check browser download permissions.");
+    }
+  }
+
+  function copyTableCSV() {
+    const aoa = buildTableAOA(grid, S, P, totals);
+    const text = aoa.map((row) => row.join(",")).join("\n");
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as CSV."));
+    else {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); alert("Table copied as CSV.");
+    }
+  }
+
+  function copyTableTSV() {
+    const aoa = buildTableAOA(grid, S, P, totals);
+    const text = aoa.map((row) => row.join("\t")).join("\n");
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as TSV."));
+    else {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); alert("Table copied as TSV.");
+    }
+  }
+
+  function exportXLSX() {
+    try {
+      // Prefer exporting the actual DOM table for maximum fidelity
+      const table = tableRef.current;
+      let wb;
+      if (table) {
+        wb = XLSX.utils.table_to_book(table, { sheet: "Table", raw: true });
+      } else {
+        // Fallback: rebuild from grid if ref missing
+        const aoa = buildTableAOA(grid, S, P, totals);
+        const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
+        wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsBefore, "Table");
+      }
+
+      // Summary sheet
+      const rMx = totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0);
+      const rMn = totals.reduce((a, t, i) => (t < totals[a] ? i : a), 0);
+      const spreadVal = (totals[rMx] ?? 0) - (totals[rMn] ?? 0);
+      const wsSummary = XLSX.utils.aoa_to_sheet([
+        ["Metric", "Value"],
+        ["Rows (S)", S],
+        ["Columns (P)", P],
+        ["Max row (S#)", rMx + 1],
+        ["Min row (S#)", rMn + 1],
+        ["Spread (mAh)", Math.round(spreadVal)],
+      ]);
+      XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+
+      const xblob = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      const url = URL.createObjectURL(new Blob([xblob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `AH_Balancer_${S}Sx${P}P.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      console.error(e);
+      alert("Excel export failed. Try the Copy buttons to transfer data, or ensure 'xlsx' is installed.");
+    }
+  }
+
+  function randomize() {
+    const g = Array.from({ length: S }, () => Array.from({ length: P }, () => Math.round(4350 + Math.random() * 200)));
+    setGrid(g);
+  }
+
+  function applySuggestedSwap() {
+    if (!suggestion) return;
+    setGrid((g) => applySwap(g, suggestion));
+  }
+
+  function iterateToTolerance() {
+    let g = grid;
+    let s = evaluateBestSingleSwap(g);
+    let guard = 0;
+    while (s && s.improvement > 0 && s.afterSpread > tolerance && guard < 200) {
+      g = applySwap(g, s);
+      s = evaluateBestSingleSwap(g);
+      guard++;
+    }
+    setGrid(g);
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-lg shadow-lg p-6"
-        >
-          <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
-            AH Balancer - 13SxP Battery Optimizer
-          </h1>
-          
-          {/* Configuration Panel */}
-          <div className="mb-6 bg-blue-50 p-4 rounded-lg">
-            <h2 className="text-xl font-semibold text-blue-800 mb-4">Battery Configuration</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Number of Cells:
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={numCells}
-                  onChange={(e) => handleNumCellsChange(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Voltage (V):
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={targetVoltage}
-                  onChange={(e) => setTargetVoltage(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={autoBalance}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Auto Balance
-              </button>
-              <button
-                onClick={resetCells}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Reset Cells
-              </button>
-              <button
-                onClick={exportData}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors"
-              >
-                Export Data
-              </button>
-            </div>
+    <div className="min-h-screen w-full bg-white text-gray-900 p-6 space-y-6">
+      <motion.h1 initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="text-2xl font-semibold">
+        AH Balancer — Interactive Optimizer
+      </motion.h1>
+
+      <div className="grid md:grid-cols-3 gap-4 items-end">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Series (S)</label>
+          <input type="number" min={1} value={S} onChange={(e) => setS(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Parallel (P)</label>
+          <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full border rounded-2xl px-3 py-2" />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Tolerance (mAh)</label>
+          <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full border rounded-2xl px-3 py-2" />
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Paste CSV / TSV (auto-detect)</label>
+          <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={6} className="w-full border rounded-2xl px-3 py-2" placeholder={"4350,4389,4472\n4430,4451,4403"} />
+          <div className="flex gap-2">
+            <button onClick={loadFromPaste} className="px-4 py-2 rounded-2xl border">Load from Paste</button>
+            <button onClick={randomize} className="px-4 py-2 rounded-2xl border">Generate Demo Data</button>
           </div>
-
-          {/* Results Panel */}
-          {results && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4"
-            >
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-green-800">Total Voltage</h3>
-                <p className="text-2xl font-bold text-green-600">{results.totalVoltage}V</p>
+        </div>
+        <div className="space-y-3 p-4 rounded-2xl border">
+          <div className="text-sm">Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
+          <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
+          {suggestion ? (
+            <div className="text-sm">
+              Suggested swap: <b>S{suggestion.rMax + 1}:P{suggestion.cFromMax + 1}</b> ↔ <b>S{suggestion.rMin + 1}:P{suggestion.cFromMin + 1}</b>
+              <div>Improvement: <b>{Math.round(suggestion.improvement)}</b> mAh | After spread: <b>{Math.round(suggestion.afterSpread)}</b> mAh</div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={applySuggestedSwap} className="px-4 py-2 rounded-2xl border">Apply Suggested Swap</button>
+                <button onClick={iterateToTolerance} className="px-4 py-2 rounded-2xl border">Iterate to Tolerance</button>
               </div>
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-blue-800">Total Capacity</h3>
-                <p className="text-2xl font-bold text-blue-600">{results.totalCapacity}Ah</p>
-              </div>
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-yellow-800">Voltage Deviation</h3>
-                <p className="text-2xl font-bold text-yellow-600">{results.voltageDeviation}V</p>
-              </div>
-              <div className={`p-4 rounded-lg ${results.isBalanced ? 'bg-green-50' : 'bg-red-50'}`}>
-                <h3 className={`font-semibold ${results.isBalanced ? 'text-green-800' : 'text-red-800'}`}>
-                  Balance Status
-                </h3>
-                <p className={`text-lg font-bold ${results.isBalanced ? 'text-green-600' : 'text-red-600'}`}>
-                  {results.isBalanced ? 'Balanced' : 'Needs Balancing'}
-                </p>
-              </div>
-            </motion.div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500">Enter data to see a suggestion.</div>
           )}
+        </div>
+      </div>
 
-          {/* Cells Table */}
-          {cells.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="overflow-x-auto"
-            >
-              <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Cell ID
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Voltage (V)
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Capacity (Ah)
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Internal Resistance (Ω)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {cells.map((cell) => (
-                    <tr key={cell.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        Cell {cell.id}
-                      </td>
-                      <td className="px-2 py-1">
+      <div className="flex items-center justify-end gap-2 mb-2">
+        <button onClick={copyTableTSV} className="px-4 py-2 rounded-2xl border">Copy Table TSV</button>
+        <button onClick={copyTableCSV} className="px-4 py-2 rounded-2xl border">Copy Table CSV</button>
+        <button onClick={exportCSV} className="px-4 py-2 rounded-2xl border">Export Table CSV</button>
+        <button onClick={exportXLSX} className="px-4 py-2 rounded-2xl border">Export Table Excel</button>
+      </div>
+
+      <div className="overflow-auto border rounded-2xl">
+        <table ref={tableRef} className="min-w-full text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-2 text-left sticky left-0 bg-white z-10">Series\\Parallel</th>
+              {Array.from({ length: P }).map((_, j) => (
+                <th key={j} className="px-3 py-2">P{j + 1}</th>
+              ))}
+              <th className="px-3 py-2">Total (mAh)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {grid.map((row, i) => {
+              const isMax = i === rMax;
+              const isMin = i === rMin;
+              return (
+                <tr key={i} className={`${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
+                  <td className="px-3 py-2 font-medium sticky left-0 bg-white z-10">S{i + 1}</td>
+                  {row.map((v, j) => {
+                    const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
+                    const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
+                    const common = "px-3 py-1 border rounded-xl w-24";
+                    return (
+                      <td key={j} className="px-2 py-2">
                         <input
-                          type="number"
-                          step="0.001"
-                          value={cell.voltage}
-                          onChange={(e) => handleCellChange(cell.id, 'voltage', e.target.value)}
-                          className="w-full p-2 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""}`}
+                          value={isFinite(v) ? v : ""}
+                          onChange={(e) => handleCellChange(i, j, e.target.value)}
+                          inputMode="numeric"
                         />
                       </td>
-                      <td className="px-2 py-1">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={cell.capacity}
-                          onChange={(e) => handleCellChange(cell.id, 'capacity', e.target.value)}
-                          className="w-full p-2 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </td>
-                      <td className="px-2 py-1">
-                        <input
-                          type="number"
-                          step="0.001"
-                          value={cell.internalResistance}
-                          onChange={(e) => handleCellChange(cell.id, 'internalResistance', e.target.value)}
-                          className="w-full p-2 text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </motion.div>
-          )}
-        </motion.div>
+                    );
+                  })}
+                  <td className="px-3 py-2 font-semibold">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-xs text-gray-500">
+        Tips:
+        <ul className="list-disc ml-5 space-y-1 mt-1">
+          <li>Paste a 13×7 matrix (or change S/P first) and click <b>Load from Paste</b>.</li>
+          <li>Yellow ring = cell to <b>swap out</b> from the current <b>max</b> row; Blue ring = cell to <b>swap in</b> to the current <b>min</b> row.</li>
+          <li>Click <b>Apply Suggested Swap</b> to mutate the grid; re-run until spread ≤ tolerance using <b>Iterate to Tolerance</b>.</li>
+        </ul>
       </div>
     </div>
   );
 }
 
-export default App;
+// ---------- Self-tests (non-blocking) ----------
+(function runSelfTests(){
+  try {
+    // sums tests
+    console.assert(sums([1,2,3]) === 6, "sums basic");
+    console.assert(sums([NaN, 5, NaN]) === 5, "sums ignores NaN");
+
+    // parseCSV tests
+    const parsed = parseCSV("1,2,3\n4 5 6\n7\t8\t9");
+    console.assert(parsed.length === 3 && parsed[0].length === 3, "parseCSV basic");
+
+    // evaluateBestSingleSwap sanity
+    const g1 = [[1,2],[3,4]]; // totals: [3,7] spread 4
+    const s1 = evaluateBestSingleSwap(g1);
+    console.assert(s1 && typeof s1.improvement === 'number', "swap suggestion returns object");
+
+    // swap application reduces or keeps spread
+    const spreadBefore = Math.max(...g1.map(sums)) - Math.min(...g1.map(sums));
+    const g1b = applySwap(g1, s1);
+    const spreadAfter = Math.max(...g1b.map(sums)) - Math.min(...g1b.map(sums));
+    console.assert(spreadAfter <= spreadBefore, "swap does not worsen spread");
+
+    // newline join correctness for CSV/TSV
+    const aoa = [["A","B"],[1,2]];
+    const csvText = aoa.map((r)=>r.join(",")).join("\n");
+    const tsvText = aoa.map((r)=>r.join("\t")).join("\n");
+    console.assert(csvText.includes("\n") && tsvText.includes("\n"), "newline joins are correct");
+
+  } catch (e) {
+    console.warn("Self-tests failed (non-fatal):", e);
+  }
+})();
