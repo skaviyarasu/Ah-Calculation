@@ -147,14 +147,25 @@ export default function App() {
   }, []);
 
   async function loadSavedJobs() {
+    setLoading(true);
     try {
       const user = await auth.getCurrentUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const jobs = await db.getUserJobs(user.id);
       setSavedJobs(jobs || []);
+      
+      if (jobs && jobs.length > 0) {
+        console.log(`Retrieved ${jobs.length} saved job(s) from database`);
+      }
     } catch (error) {
       console.error('Failed to load jobs:', error);
+      alert('Failed to retrieve saved jobs: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -567,27 +578,60 @@ export default function App() {
       </div>
 
           <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium text-gray-700">Saved Jobs:</h3>
-              {savedJobs.length > 0 ? (
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) loadJob(e.target.value);
-                    e.target.value = '';
-                  }}
-                  className="border rounded-md px-3 py-1 text-sm"
-                  defaultValue=""
+            <div className="flex items-center gap-3">
+              <button
+                onClick={loadSavedJobs}
+                disabled={loading}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-sm font-medium ${
+                  loading
+                    ? 'bg-gray-400 text-white cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title="Retrieve all saved jobs from database"
+              >
+                <svg 
+                  className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
                 >
-                  <option value="">Select a job to load...</option>
-                  {savedJobs.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.job_card || job.customer_name || 'Unnamed Job'} - {new Date(job.created_at).toLocaleDateString()}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="text-sm text-gray-500">No saved jobs yet</span>
-              )}
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d={loading 
+                      ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                      : "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    }
+                  />
+                </svg>
+                {loading ? 'Retrieving...' : 'Retrieve Data'}
+              </button>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-medium text-gray-700">Saved Jobs:</h3>
+                {savedJobs.length > 0 ? (
+                  <>
+                    <span className="text-sm text-gray-600">({savedJobs.length} found)</span>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) loadJob(e.target.value);
+                        e.target.value = '';
+                      }}
+                      className="border rounded-md px-3 py-1 text-sm"
+                      defaultValue=""
+                    >
+                      <option value="">Select a job to load...</option>
+                      {savedJobs.map((job) => (
+                        <option key={job.id} value={job.id}>
+                          {job.job_card || job.customer_name || 'Unnamed Job'} - {new Date(job.created_at).toLocaleDateString()}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <span className="text-sm text-gray-500">No saved jobs yet</span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table TSV</button>
