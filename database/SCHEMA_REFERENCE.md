@@ -22,6 +22,7 @@ Primary table for storing battery optimization project metadata.
 |--------|------|-------------|
 | `id` | UUID | Primary key (auto-generated) |
 | `user_id` | UUID | Foreign key → auth.users |
+| `serial_number` | TEXT | Unique tracking serial number (format: AH-YYYYMMDD-XXXX) |
 | `customer_name` | TEXT | Customer/client name |
 | `job_card` | TEXT | Job card/reference number |
 | `job_date` | DATE | Date of optimization |
@@ -114,6 +115,21 @@ Run `database/01_battery_optimization_schema.sql` in Supabase SQL Editor.
 SELECT * FROM battery_optimization_jobs 
 WHERE user_id = auth.uid()
 ORDER BY created_at DESC;
+```
+
+### Search job by serial number
+```sql
+SELECT * FROM battery_optimization_jobs 
+WHERE user_id = auth.uid()
+  AND serial_number = 'AH-20250126-0001';
+```
+
+### Get jobs by serial number pattern (partial match)
+```sql
+SELECT * FROM battery_optimization_jobs 
+WHERE user_id = auth.uid()
+  AND serial_number LIKE 'AH-20250126-%'
+ORDER BY serial_number;
 ```
 
 ### Get job with cell capacity data

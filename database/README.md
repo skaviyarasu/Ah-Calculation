@@ -5,20 +5,21 @@ This directory contains all database schema files for the AH Balancer applicatio
 ## 📁 Files
 
 - **`01_battery_optimization_schema.sql`** - Complete database schema (tables, indexes, policies, triggers)
+- **`02_add_serial_number_migration.sql`** - Migration to add serial_number column to existing databases
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
 
 SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to ensure proper execution order:
-- **`01_battery_optimization_schema.sql`** - Initial schema setup (run this first)
-- **`02_*`** - Future migrations (if needed)
-- **`03_*`** - Additional migrations (if needed)
+- **`01_battery_optimization_schema.sql`** - Initial schema setup (run this first for new databases)
+- **`02_add_serial_number_migration.sql`** - Add serial_number column (run this if you have an existing database)
+- **`03_*`** - Additional migrations (if needed in future)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
 ## 🚀 Quick Setup
 
-### For New Supabase Projects:
+### For New Supabase Projects (Fresh Installation):
 
 1. **Copy the schema:**
    - Open `01_battery_optimization_schema.sql` in this directory
@@ -45,6 +46,7 @@ This numbering system ensures files are executed in the correct order when runni
 Stores AH optimization project metadata:
 - `id` - UUID primary key
 - `user_id` - Foreign key to auth.users
+- `serial_number` - Unique tracking serial number (format: AH-YYYYMMDD-XXXX)
 - `customer_name` - Customer information
 - `job_card` - Job card/reference number
 - `job_date` - Date of the job
@@ -75,6 +77,7 @@ All tables have RLS enabled with policies ensuring:
 
 - `battery_optimization_jobs_user_id_idx` - Fast user job queries
 - `battery_optimization_jobs_created_at_idx` - Sorted job listings
+- `battery_optimization_jobs_serial_number_idx` - Fast serial number lookups
 - `battery_cell_capacities_job_id_idx` - Fast cell data retrieval
 - `battery_cell_capacities_position_idx` - Optimized grid lookups
 
@@ -93,9 +96,10 @@ When making schema changes:
 
 ## 📝 Schema Version
 
-**Current Version:** 1.0.0  
-**Last Updated:** 2024-10-26  
-**Compatible With:** AH Balancer v1.0+
+**Current Version:** 2.0.0  
+**Last Updated:** 2025-01-26  
+**Compatible With:** AH Balancer v1.0+  
+**Changes:** Added serial_number column for job tracking
 
 ## 🔒 Security Notes
 

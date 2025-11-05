@@ -1,8 +1,8 @@
 -- ============================================
 -- AH Balancer - Complete Database Schema
 -- ============================================
--- Version: 1.0.0
--- Last Updated: 2024-10-26
+-- Version: 2.0.0
+-- Last Updated: 2025-01-26
 -- 
 -- This schema creates all necessary tables, 
 -- indexes, security policies, and triggers
