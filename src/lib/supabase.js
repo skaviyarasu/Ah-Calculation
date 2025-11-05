@@ -19,8 +19,32 @@ export const supabase = createClient(
 
 // Database helper functions
 export const db = {
+  // Generate unique serial number (industry-standard format: AH-YYYYMMDD-XXXX)
+  generateSerialNumber(sequenceNumber) {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const sequence = String(sequenceNumber).padStart(4, '0')
+    return `AH-${year}${month}${day}-${sequence}`
+  },
+
   // Battery Optimization Jobs table operations
   async createJob(jobData) {
+    // Generate unique serial number if not provided
+    if (!jobData.serial_number) {
+      // Get user's existing jobs to determine next sequence number
+      const existingJobs = await this.getUserJobs(jobData.user_id)
+      // Count jobs created today for same-day sequence
+      const today = new Date().toISOString().split('T')[0]
+      const todayJobs = existingJobs.filter(job => {
+        const jobDate = job.created_at ? new Date(job.created_at).toISOString().split('T')[0] : null
+        return jobDate === today
+      })
+      const nextSequence = todayJobs.length + 1
+      jobData.serial_number = this.generateSerialNumber(nextSequence)
+    }
+    
     const { data, error } = await supabase
       .from('battery_optimization_jobs')
       .insert([jobData])

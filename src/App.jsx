@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 import { db, auth, supabase } from "./lib/supabase";
@@ -92,6 +92,7 @@ function buildTableAOA(grid, S, P, totals, metadata = null) {
   if (metadata) {
     aoa.push(["AH Balancer - Battery Optimization Report"]);
     aoa.push([""]);
+    aoa.push(["Serial Number:", metadata.serialNumber || ""]);
     aoa.push(["Customer:", metadata.customerName || ""]);
     aoa.push(["Job Card #:", metadata.jobCard || ""]);
     aoa.push(["Date:", metadata.jobDate || ""]);
@@ -129,12 +130,15 @@ export default function App() {
   const [jobCard, setJobCard] = useState("");
   const [jobDate, setJobDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [batterySpec, setBatterySpec] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
 
   // Database state
   const [currentJobId, setCurrentJobId] = useState(null);
   const [savedJobs, setSavedJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Ensure grid matches SxP
   useEffect(() => {
@@ -145,6 +149,21 @@ export default function App() {
   useEffect(() => {
     loadSavedJobs();
   }, []);
+
+  // Close search results when clicking outside (industry-standard UX)
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const searchContainer = document.getElementById('search-container');
+      if (searchContainer && !searchContainer.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    if (showSearchResults) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showSearchResults]);
 
   async function loadSavedJobs() {
     setLoading(true);
@@ -183,8 +202,18 @@ export default function App() {
 
     setSaving(true);
     try {
+      // Generate serial number if creating new job and not provided
+      let finalSerialNumber = serialNumber.trim();
+      if (!currentJobId && !finalSerialNumber) {
+        // Get count of existing jobs to generate next serial number
+        const existingJobs = await db.getUserJobs(user.id);
+        finalSerialNumber = db.generateSerialNumber(existingJobs.length + 1);
+        setSerialNumber(finalSerialNumber);
+      }
+
       const jobData = {
         user_id: user.id,
+        serial_number: finalSerialNumber || null,
         customer_name: customerName || null,
         job_card: jobCard || null,
         job_date: jobDate || null,
@@ -196,13 +225,22 @@ export default function App() {
 
       let job;
       if (currentJobId) {
-        // Update existing job
+        // Update existing job (preserve serial number if not changed)
+        if (!finalSerialNumber) {
+          // Keep existing serial number if not provided
+          const existingJobs = await db.getUserJobs(user.id);
+          const existingJob = existingJobs.find(j => j.id === currentJobId);
+          if (existingJob?.serial_number) {
+            jobData.serial_number = existingJob.serial_number;
+          }
+        }
         await db.updateJob(currentJobId, jobData);
         job = { id: currentJobId, ...jobData };
       } else {
         // Create new job
         job = await db.createJob(jobData);
         setCurrentJobId(job.id);
+        setSerialNumber(job.serial_number || finalSerialNumber); // Update UI with generated serial
       }
 
       // Save cell data
@@ -237,6 +275,7 @@ export default function App() {
       }
 
       // Load job metadata
+      setSerialNumber(job.serial_number || "");
       setCustomerName(job.customer_name || "");
       setJobCard(job.job_card || "");
       setJobDate(job.job_date || new Date().toISOString().split('T')[0]);
@@ -261,6 +300,8 @@ export default function App() {
 
       setGrid(newGrid);
       setCurrentJobId(jobId);
+      setSearchQuery(""); // Clear search after loading
+      setShowSearchResults(false);
       alert('Job loaded successfully!');
     } catch (error) {
       console.error('Load error:', error);
@@ -294,6 +335,7 @@ export default function App() {
   function newJob() {
     if (confirm('Create a new job? Current unsaved changes will be lost.')) {
       setCurrentJobId(null);
+      setSerialNumber(""); // Will be auto-generated on save
       setCustomerName("");
       setJobCard("");
       setJobDate(new Date().toISOString().split('T')[0]);
@@ -308,6 +350,33 @@ export default function App() {
   const spread = useMemo(() => (totals[rMax] ?? 0) - (totals[rMin] ?? 0), [totals, rMax, rMin]);
 
   const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
+
+  // Filter saved jobs based on search query (industry-standard multi-field search)
+  const filteredJobs = useMemo(() => {
+    if (!searchQuery.trim()) return savedJobs;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return savedJobs.filter((job) => {
+      // Search across multiple fields including serial number
+      const serialNumber = (job.serial_number || '').toLowerCase();
+      const jobCard = (job.job_card || '').toLowerCase();
+      const customerName = (job.customer_name || '').toLowerCase();
+      const batterySpec = (job.battery_spec || '').toLowerCase();
+      const jobId = job.id.toLowerCase();
+      const dateStr = job.job_date ? new Date(job.job_date).toLocaleDateString().toLowerCase() : '';
+      const createdDate = job.created_at ? new Date(job.created_at).toLocaleDateString().toLowerCase() : '';
+      
+      return (
+        serialNumber.includes(query) ||
+        jobCard.includes(query) ||
+        customerName.includes(query) ||
+        batterySpec.includes(query) ||
+        jobId.includes(query) ||
+        dateStr.includes(query) ||
+        createdDate.includes(query)
+      );
+    });
+  }, [savedJobs, searchQuery]);
 
   function handleCellChange(i, j, v) {
     const n = String(v).trim() === "" ? NaN : Number(v);
@@ -334,11 +403,11 @@ export default function App() {
 
   function exportCSV() {
     try {
-      const metadata = { customerName, jobCard, jobDate, batterySpec };
+      const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
       const aoa = buildTableAOA(grid, S, P, totals, metadata);
       const csv = aoa.map((row) => row.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const filename = `AH_Balancer_${jobCard || 'Job'}_${S}Sx${P}P.csv`;
       a.href = url;
@@ -354,7 +423,7 @@ export default function App() {
   }
 
   function copyTableCSV() {
-    const metadata = { customerName, jobCard, jobDate, batterySpec };
+    const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
     const aoa = buildTableAOA(grid, S, P, totals, metadata);
     const text = aoa.map((row) => row.join(",")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as CSV."));
@@ -365,7 +434,7 @@ export default function App() {
   }
 
   function copyTableTSV() {
-    const metadata = { customerName, jobCard, jobDate, batterySpec };
+    const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
     const aoa = buildTableAOA(grid, S, P, totals, metadata);
     const text = aoa.map((row) => row.join("\t")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as TSV."));
@@ -378,7 +447,7 @@ export default function App() {
   function exportXLSX() {
     try {
       // Always use grid data for accurate values (DOM table can't read input values properly)
-      const metadata = { customerName, jobCard, jobDate, batterySpec };
+      const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
       const aoa = buildTableAOA(grid, S, P, totals, metadata);
       const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
@@ -396,6 +465,7 @@ export default function App() {
         ["Generated", new Date().toLocaleString()],
         ["", ""],
         ["Job Information", ""],
+        ["Serial Number", serialNumber || "Not assigned"],
         ["Customer Name", customerName || "Not specified"],
         ["Job Card #", jobCard || "Not specified"],
         ["Job Date", jobDate || "Not specified"],
@@ -492,7 +562,23 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              Serial Number <span className="text-xs text-gray-500 font-normal">(Tracking ID)</span>
+                </label>
+            <input
+              type="text"
+              value={serialNumber}
+              onChange={(e) => setSerialNumber(e.target.value.toUpperCase())}
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 font-mono text-sm"
+              placeholder="AH-YYYYMMDD-XXXX"
+              title={currentJobId ? "Edit serial number for tracking" : "Auto-generated on save"}
+            />
+            {!currentJobId && (
+              <p className="text-xs text-gray-500">Will be auto-generated when you save</p>
+            )}
+          </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Customer Name</label>
             <input
@@ -577,62 +663,160 @@ export default function App() {
         </div>
       </div>
 
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={loadSavedJobs}
-                disabled={loading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-sm font-medium ${
-                  loading
-                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                }`}
-                title="Retrieve all saved jobs from database"
-              >
-                <svg 
-                  className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round" 
-                    strokeWidth={2} 
-                    d={loading 
-                      ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                      : "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    }
+          {/* Search and Retrieve Section */}
+          <div className="mb-6 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+              {/* Search Input */}
+              <div id="search-container" className="flex-1 relative">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Search Saved Jobs
+                </label>
+                <div className="relative">
+                  <svg 
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowSearchResults(true);
+                    }}
+                    onFocus={() => setShowSearchResults(true)}
+                    placeholder="Search by Job Card, Customer Name, Date, or ID..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                </svg>
-                {loading ? 'Retrieving...' : 'Retrieve Data'}
-              </button>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium text-gray-700">Saved Jobs:</h3>
-                {savedJobs.length > 0 ? (
-                  <>
-                    <span className="text-sm text-gray-600">({savedJobs.length} found)</span>
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) loadJob(e.target.value);
-                        e.target.value = '';
+                  {searchQuery && (
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setShowSearchResults(false);
                       }}
-                      className="border rounded-md px-3 py-1 text-sm"
-                      defaultValue=""
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      <option value="">Select a job to load...</option>
-                      {savedJobs.map((job) => (
-                        <option key={job.id} value={job.id}>
-                          {job.job_card || job.customer_name || 'Unnamed Job'} - {new Date(job.created_at).toLocaleDateString()}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                ) : (
-                  <span className="text-sm text-gray-500">No saved jobs yet</span>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                
+                {/* Search Results Dropdown */}
+                {showSearchResults && searchQuery.trim() && filteredJobs.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                    {filteredJobs.map((job) => (
+                      <div
+                        key={job.id}
+                        onClick={() => {
+                          loadJob(job.id);
+                          setSearchQuery("");
+                          setShowSearchResults(false);
+                        }}
+                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">
+                              {job.serial_number && (
+                                <span className="font-mono text-blue-600 mr-2 font-semibold">{job.serial_number}</span>
+                              )}
+                              {job.job_card || job.customer_name || 'Unnamed Job'}
+                              {currentJobId === job.id && (
+                                <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Current</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {job.customer_name && job.job_card && `${job.customer_name} • `}
+                              {job.job_date && `Date: ${new Date(job.job_date).toLocaleDateString()} • `}
+                              {job.serial_number ? `SN: ${job.serial_number}` : `ID: ${job.id.substring(0, 8)}...`}
+                            </div>
+                          </div>
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {showSearchResults && searchQuery.trim() && filteredJobs.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-4 text-center text-gray-500">
+                    No jobs found matching "{searchQuery}"
+                  </div>
                 )}
               </div>
+
+              {/* Retrieve Button */}
+              <div className="flex flex-col gap-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0">Actions</label>
+                <button
+                  onClick={loadSavedJobs}
+                  disabled={loading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-sm font-medium whitespace-nowrap ${
+                    loading
+                      ? 'bg-gray-400 text-white cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                  title="Retrieve all saved jobs from database"
+                >
+                  <svg 
+                    className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth={2} 
+                      d={loading 
+                        ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                        : "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                      }
+                    />
+                  </svg>
+                  {loading ? 'Retrieving...' : 'Refresh List'}
+                </button>
+              </div>
             </div>
+
+            {/* Search Summary */}
+            {searchQuery.trim() && (
+              <div className="mt-3 text-sm text-gray-600">
+                Found {filteredJobs.length} of {savedJobs.length} saved {savedJobs.length === 1 ? 'job' : 'jobs'}
+              </div>
+            )}
+            
+            {/* Quick Access Dropdown (fallback) */}
+            {!searchQuery.trim() && savedJobs.length > 0 && (
+              <div className="mt-4 flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Quick Load:</label>
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      loadJob(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="flex-1 border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  defaultValue=""
+                >
+                  <option value="">Select a job to load...</option>
+                  {savedJobs.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.serial_number ? `[${job.serial_number}] ` : ''}{job.job_card || job.customer_name || 'Unnamed Job'} - {new Date(job.created_at).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
             <div className="flex items-center gap-2">
               <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table TSV</button>
               <button onClick={copyTableCSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table CSV</button>
@@ -696,6 +880,9 @@ export default function App() {
                   >
                     <div className="flex-1">
                       <div className="font-medium text-gray-900">
+                        {job.serial_number && (
+                          <span className="font-mono text-blue-600 font-semibold mr-2">{job.serial_number}</span>
+                        )}
                         {job.job_card || job.customer_name || 'Unnamed Job'}
                         {currentJobId === job.id && <span className="ml-2 text-blue-600 text-sm">(Current)</span>}
                       </div>

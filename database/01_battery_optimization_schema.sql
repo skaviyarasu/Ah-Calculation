@@ -23,6 +23,7 @@
 CREATE TABLE IF NOT EXISTS battery_optimization_jobs (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  serial_number TEXT UNIQUE NOT NULL,
   customer_name TEXT,
   job_card TEXT,
   job_date DATE,
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS battery_cell_capacities (
 
 CREATE INDEX IF NOT EXISTS battery_optimization_jobs_user_id_idx ON battery_optimization_jobs(user_id);
 CREATE INDEX IF NOT EXISTS battery_optimization_jobs_created_at_idx ON battery_optimization_jobs(created_at DESC);
+CREATE INDEX IF NOT EXISTS battery_optimization_jobs_serial_number_idx ON battery_optimization_jobs(serial_number);
 CREATE INDEX IF NOT EXISTS battery_cell_capacities_job_id_idx ON battery_cell_capacities(optimization_job_id);
 CREATE INDEX IF NOT EXISTS battery_cell_capacities_position_idx ON battery_cell_capacities(series_index, parallel_index);
 
