@@ -817,12 +817,13 @@ export default function App() {
               </div>
             )}
           </div>
-            <div className="flex items-center gap-2">
-              <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table TSV</button>
-              <button onClick={copyTableCSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table CSV</button>
-              <button onClick={exportCSV} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table CSV</button>
-              <button onClick={exportXLSX} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table Excel</button>
-            </div>
+
+          {/* Export Buttons */}
+          <div className="mb-4 flex items-center justify-end gap-2">
+            <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table TSV</button>
+            <button onClick={copyTableCSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table CSV</button>
+            <button onClick={exportCSV} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table CSV</button>
+            <button onClick={exportXLSX} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table Excel</button>
           </div>
 
           <div className="overflow-auto border rounded-2xl">
