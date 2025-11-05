@@ -1,86 +1,59 @@
 import React, { useEffect, useState } from 'react';
-
-// Constants
-const AUTH_KEY = 'ahv_auth_user';
-const USERS_KEY = 'ahv_users';
-
-// Simple password hashing function (for demo - use proper hashing in production)
-async function hashPassword(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'ahv_salt_2024');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
+import { auth, supabase } from './lib/supabase';
 
 export default function LoginGate({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(true); // Start with loading true
   
   // Form states
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Initialize users storage and check authentication
+  // Initialize Supabase authentication
   useEffect(() => {
-    // Initialize users storage if it doesn't exist
-    if (!localStorage.getItem(USERS_KEY)) {
-      localStorage.setItem(USERS_KEY, JSON.stringify({}));
-    }
-    
-    // Check if user is already authenticated
-    const storedUser = localStorage.getItem(AUTH_KEY);
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-    }
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+      setCurrentUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setIsAuthenticated(!!session);
+      setCurrentUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   async function handleLogin(e) {
     e.preventDefault();
-    if (!username.trim() || !password) {
-      alert('Please enter both username and password');
+    if (!email.trim() || !password) {
+      alert('Please enter both email and password');
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     try {
-      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
-      const user = users[username.toLowerCase()];
-      
-      if (!user) {
-        alert('User not found. Please register first.');
-        setLoading(false);
-        return;
-      }
-
-      const passwordHash = await hashPassword(password);
-      if (user.passwordHash === passwordHash) {
-        const userSession = {
-          username: user.username,
-          loginTime: new Date().toISOString()
-        };
-        
-        localStorage.setItem(AUTH_KEY, JSON.stringify(userSession));
-        setCurrentUser(userSession);
-        setIsAuthenticated(true);
-      } else {
-        alert('Invalid password');
-      }
+      await auth.signIn(email, password);
+      // Success handled by auth state change listener
     } catch (error) {
       console.error('Login error:', error);
-      alert('Login failed. Please try again.');
+      alert(error.message || 'Login failed. Please check your credentials.');
     }
-    setLoading(false);
+    setSubmitting(false);
   }
 
   async function handleRegister(e) {
     e.preventDefault();
-    if (!username.trim() || !password || !confirmPassword) {
+    if (!email.trim() || !password || !confirmPassword || !fullName.trim()) {
       alert('Please fill in all fields');
       return;
     }
@@ -95,58 +68,76 @@ export default function LoginGate({ children }) {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     try {
-      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
+      await auth.signUp(email, password, {
+        full_name: fullName.trim()
+      });
       
-      if (users[username.toLowerCase()]) {
-        alert('Username already exists. Please choose a different username.');
-        setLoading(false);
-        return;
-      }
-
-      const passwordHash = await hashPassword(password);
-      const newUser = {
-        username: username.trim(),
-        passwordHash,
-        createdAt: new Date().toISOString()
-      };
-
-      users[username.toLowerCase()] = newUser;
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-      
-      alert('Registration successful! Please login with your credentials.');
+      alert('Registration successful! Please check your email for verification link.');
       setIsLogin(true);
-      setUsername('');
+      setEmail('');
       setPassword('');
       setConfirmPassword('');
+      setFullName('');
     } catch (error) {
       console.error('Registration error:', error);
-      alert('Registration failed. Please try again.');
+      alert(error.message || 'Registration failed. Please try again.');
     }
-    setLoading(false);
+    setSubmitting(false);
   }
 
-  function logout() {
-    localStorage.removeItem(AUTH_KEY);
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    setUsername('');
-    setPassword('');
-    setConfirmPassword('');
+  async function handleLogout() {
+    try {
+      await auth.signOut();
+      // Success handled by auth state change listener
+    } catch (error) {
+      console.error('Logout error:', error);
+      alert('Logout failed. Please try again.');
+    }
+  }
+
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-200">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div>
+              <p className="text-gray-700 font-medium mb-1">Verifying Authentication</p>
+              <p className="text-sm text-gray-500">Checking your session...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
-        <div className="bg-white max-w-md w-full rounded-2xl shadow-lg p-6 space-y-6">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+        <div className="bg-white max-w-md w-full rounded-2xl shadow-xl p-8 space-y-6 border border-gray-200">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">
+            <div className="mb-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-3">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
               AH Balancer
             </h1>
-            <p className="text-gray-600">
-              {isLogin ? 'Sign in to your account' : 'Create new account'}
+            <p className="text-gray-600 text-sm">
+              {isLogin ? 'Sign in to access your battery optimization tools' : 'Create an account to get started'}
             </p>
+            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <span>Protected Access</span>
+            </div>
           </div>
 
           <div className="flex bg-gray-100 rounded-xl p-1">
@@ -173,18 +164,35 @@ export default function LoginGate({ children }) {
           </div>
 
           <form onSubmit={isLogin ? handleLogin : handleRegister} className="space-y-4">
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter your full name"
+                  required
+                  autoFocus={!isLogin}
+                />
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Username
+                Email
               </label>
               <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter your username"
+                placeholder="Enter your email"
                 required
-                autoFocus
+                autoFocus={isLogin}
               />
             </div>
 
@@ -220,14 +228,14 @@ export default function LoginGate({ children }) {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting}
               className={`w-full py-3 px-4 rounded-xl font-medium transition-colors ${
-                loading
+                submitting
                   ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
-              {loading ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
+              {submitting ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
             </button>
           </form>
 
@@ -243,18 +251,31 @@ export default function LoginGate({ children }) {
     );
   }
 
+  // Render authenticated app with user info
   return (
-    <div>
-      <div className="fixed top-3 right-3 flex items-center gap-3">
-        <span className="text-sm text-gray-600">
-          Welcome, <strong>{currentUser?.username}</strong>
-        </span>
-        <button 
-          onClick={logout} 
-          className="text-sm border border-red-300 hover:border-red-400 rounded-lg px-3 py-1 bg-white hover:bg-red-50 text-red-600 transition-colors"
-        >
-          Logout
-        </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* User Info Header - Integrated with app */}
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-gray-700">Authenticated</span>
+              </div>
+              <span className="text-gray-400">|</span>
+              <span className="text-sm text-gray-600">
+                Welcome, <strong className="text-gray-900">{currentUser?.user_metadata?.full_name || currentUser?.email}</strong>
+              </span>
+            </div>
+            <button 
+              onClick={handleLogout} 
+              className="text-sm border border-red-300 hover:border-red-400 rounded-lg px-4 py-2 bg-white hover:bg-red-50 text-red-600 transition-colors font-medium"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
       </div>
       {children}
     </div>

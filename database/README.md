@@ -1,0 +1,105 @@
+# Database Schema Management
+
+This directory contains all database schema files for the AH Balancer application.
+
+## 📁 Files
+
+- **`01_battery_optimization_schema.sql`** - Complete database schema (tables, indexes, policies, triggers)
+- **`migrations/`** - Version-controlled migration files (if needed in future)
+
+### File Naming Convention
+
+SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to ensure proper execution order:
+- **`01_battery_optimization_schema.sql`** - Initial schema setup (run this first)
+- **`02_*`** - Future migrations (if needed)
+- **`03_*`** - Additional migrations (if needed)
+
+This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
+
+## 🚀 Quick Setup
+
+### For New Supabase Projects:
+
+1. **Copy the schema:**
+   - Open `01_battery_optimization_schema.sql` in this directory
+   - Copy the entire contents
+
+2. **Run in Supabase:**
+   - Go to your Supabase Dashboard
+   - Navigate to **SQL Editor**
+   - Click **"New query"**
+   - Paste the entire `01_battery_optimization_schema.sql` contents
+   - Click **"Run"**
+
+3. **Verify:**
+   - Check **Table Editor** → You should see:
+     - `battery_optimization_jobs` table
+     - `battery_cell_capacities` table
+   - Check **Authentication** → **Policies** → RLS policies should be active
+
+## 📊 Database Structure
+
+### Tables
+
+#### `battery_optimization_jobs`
+Stores AH optimization project metadata:
+- `id` - UUID primary key
+- `user_id` - Foreign key to auth.users
+- `customer_name` - Customer information
+- `job_card` - Job card/reference number
+- `job_date` - Date of the job
+- `battery_spec` - Battery specifications
+- `series_count` - Number of series (S)
+- `parallel_count` - Number of parallel (P)
+- `tolerance` - Tolerance in mAh
+- `created_at` - Timestamp
+- `updated_at` - Auto-updated timestamp
+
+#### `battery_cell_capacities`
+Stores individual cell capacity measurements:
+- `id` - UUID primary key
+- `optimization_job_id` - Foreign key to battery_optimization_jobs table
+- `series_index` - Series position (0-based)
+- `parallel_index` - Parallel position (0-based)
+- `capacity_mah` - Cell capacity in milliampere-hours (mAh)
+- `created_at` - Timestamp
+
+### Security (Row Level Security)
+
+All tables have RLS enabled with policies ensuring:
+- Users can only see their own jobs
+- Users can only modify their own data
+- Automatic data isolation per user
+
+### Indexes
+
+- `battery_optimization_jobs_user_id_idx` - Fast user job queries
+- `battery_optimization_jobs_created_at_idx` - Sorted job listings
+- `battery_cell_capacities_job_id_idx` - Fast cell data retrieval
+- `battery_cell_capacities_position_idx` - Optimized grid lookups
+
+### Views
+
+- `battery_optimization_summary` - Aggregated job statistics view
+
+## 🔄 Schema Updates
+
+When making schema changes:
+
+1. **Update `01_battery_optimization_schema.sql`** with new changes (or create new numbered migration files)
+2. **Document changes** in this README
+3. **Test changes** in a development Supabase project first
+4. **Run migration** in production Supabase project
+
+## 📝 Schema Version
+
+**Current Version:** 1.0.0  
+**Last Updated:** 2024-10-26  
+**Compatible With:** AH Balancer v1.0+
+
+## 🔒 Security Notes
+
+- Row Level Security (RLS) is enabled on all tables
+- All policies use `auth.uid()` for user isolation
+- Foreign key constraints ensure data integrity
+- Cascade deletes maintain referential integrity

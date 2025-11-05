@@ -1,0 +1,9 @@
+# Migrations Directory
+
+This directory is for future database migration files.
+
+Migration files should be named with version numbers:
+- `001_initial_schema.sql` (already in schema.sql)
+- `002_add_new_feature.sql`
+- `003_update_existing_table.sql`
+- etc.

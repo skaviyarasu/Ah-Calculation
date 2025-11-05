@@ -12,12 +12,12 @@ function MainApp() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div>
       {/* Navigation Header */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-4">
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold text-gray-800">Calculation Tools</h1>
+            <h1 className="text-2xl font-bold text-gray-800">AH Balancer - Calculation Tools</h1>
             <div className="flex space-x-1">
               {navigationItems.map((item) => (
                 <button
@@ -43,6 +43,7 @@ function MainApp() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
+        className="max-w-7xl mx-auto"
       >
         {currentView === "ah-balancer" && <App />}
         {currentView === "row-column" && <RowColumnCalculator />}
