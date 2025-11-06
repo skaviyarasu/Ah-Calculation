@@ -501,3 +501,196 @@ export const rbac = {
     return await this.hasRole(userId, 'verifier')
   }
 }
+
+// Inventory management helper functions
+export const inventory = {
+  // Get all inventory items
+  async getAllItems() {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .order('item_name', { ascending: true })
+    if (error) throw error
+    return data
+  },
+
+  // Get item by ID
+  async getItemById(itemId) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .eq('id', itemId)
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Generate serial number for inventory item
+  async generateSerialNumber() {
+    const { data, error } = await supabase.rpc('generate_inventory_serial_number')
+    if (error) throw error
+    return data
+  },
+
+  // Upload image to Supabase Storage
+  async uploadImage(file, itemId) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+    
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${itemId || Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+    const filePath = `inventory/${fileName}`
+    
+    const { error: uploadError } = await supabase.storage
+      .from('inventory-images')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      })
+    
+    if (uploadError) throw uploadError
+    
+    // Get public URL
+    const { data } = supabase.storage
+      .from('inventory-images')
+      .getPublicUrl(filePath)
+    
+    return data.publicUrl
+  },
+
+  // Delete image from Supabase Storage
+  async deleteImage(imageUrl) {
+    if (!imageUrl) return
+    
+    // Extract file path from URL
+    const urlParts = imageUrl.split('/')
+    const filePath = urlParts.slice(urlParts.indexOf('inventory')).join('/')
+    
+    const { error } = await supabase.storage
+      .from('inventory-images')
+      .remove([filePath])
+    
+    if (error) console.error('Error deleting image:', error)
+  },
+
+  // Create new inventory item
+  async createItem(itemData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+    
+    // Generate serial number if not provided
+    if (!itemData.serial_number) {
+      itemData.serial_number = await this.generateSerialNumber()
+    }
+    
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .insert([{
+        ...itemData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Update inventory item
+  async updateItem(itemId, updates) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .update(updates)
+      .eq('id', itemId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Delete inventory item
+  async deleteItem(itemId) {
+    const { error } = await supabase
+      .from('inventory_items')
+      .delete()
+      .eq('id', itemId)
+    if (error) throw error
+  },
+
+  // Get low stock items
+  async getLowStockItems() {
+    const { data, error } = await supabase.rpc('get_low_stock_items')
+    if (error) throw error
+    return data
+  },
+
+  // Create inventory transaction
+  async createTransaction(transactionData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+    
+    const { data, error } = await supabase
+      .from('inventory_transactions')
+      .insert([{
+        ...transactionData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Get transactions for an item
+  async getItemTransactions(itemId) {
+    const { data, error } = await supabase
+      .from('inventory_transactions')
+      .select('*')
+      .eq('item_id', itemId)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data
+  },
+
+  // Get all transactions
+  async getAllTransactions(filters = {}) {
+    let query = supabase
+      .from('inventory_transactions')
+      .select(`
+        *,
+        inventory_items (
+          item_code,
+          item_name,
+          category
+        )
+      `)
+      .order('created_at', { ascending: false })
+    
+    if (filters.item_id) {
+      query = query.eq('item_id', filters.item_id)
+    }
+    if (filters.transaction_type) {
+      query = query.eq('transaction_type', filters.transaction_type)
+    }
+    if (filters.start_date) {
+      query = query.gte('created_at', filters.start_date)
+    }
+    if (filters.end_date) {
+      query = query.lte('created_at', filters.end_date)
+    }
+    
+    const { data, error } = await query
+    if (error) throw error
+    return data
+  },
+
+  // Search items
+  async searchItems(searchTerm) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .or(`item_code.ilike.%${searchTerm}%,item_name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
+      .order('item_name', { ascending: true })
+    if (error) throw error
+    return data
+  }
+}

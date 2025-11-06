@@ -9,6 +9,8 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`03_add_role_based_access_control.sql`** - Migration to add role-based access control (RBAC) system
 - **`04_fix_rls_recursion.sql`** - Fix for RLS infinite recursion error in user_roles policies
 - **`05_add_workflow_status.sql`** - Migration to add workflow status tracking and creator/verifier roles
+- **`06_add_inventory_management.sql`** - Migration to add inventory management system (items, transactions, stock tracking)
+- **`07_add_inventory_images_and_serial.sql`** - Migration to add image_url and serial_number fields for 5S tracking and barcode generation
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -19,6 +21,8 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`03_add_role_based_access_control.sql`** - Add role-based access control system (run this to enable admin/user roles)
 - **`04_fix_rls_recursion.sql`** - Fix infinite recursion error in RLS policies (run this if you get recursion errors)
 - **`05_add_workflow_status.sql`** - Add workflow status and creator/verifier roles (run this to enable job review workflow)
+- **`06_add_inventory_management.sql`** - Add inventory management system (run this to enable stock tracking and inventory management)
+- **`07_add_inventory_images_and_serial.sql`** - Add image and serial number support (run this to enable 5S tracking with images and barcodes)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 

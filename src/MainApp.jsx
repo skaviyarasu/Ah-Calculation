@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import App from "./App";
 import RowColumnCalculator from "./RowColumnCalculator";
 import AdminPanel from "./components/AdminPanel";
+import InventoryManagement from "./components/InventoryManagement";
 import { rbac, auth } from "./lib/supabase";
 
 function MainApp() {
@@ -51,6 +52,7 @@ function MainApp() {
   const navigationItems = [
     { id: "ah-balancer", label: "AH Balancer", description: "Interactive 13SxP Optimizer" },
     { id: "row-column", label: "Row & Column Calculator", description: "Simple grid with row sums" },
+    { id: "inventory", label: "Inventory", description: "Stock Management" },
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", description: "Role & Access Management" }] : [])
   ];
 
@@ -105,6 +107,7 @@ function MainApp() {
       >
         {currentView === "ah-balancer" && <App />}
         {currentView === "row-column" && <RowColumnCalculator />}
+        {currentView === "inventory" && <InventoryManagement />}
         {currentView === "admin" && isAdmin ? (
           <AdminPanel />
         ) : currentView === "admin" && !isAdmin ? (
