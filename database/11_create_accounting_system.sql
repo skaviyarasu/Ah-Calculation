@@ -40,7 +40,53 @@ CREATE INDEX IF NOT EXISTS idx_contacts_status ON contacts(status);
 CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
 
 -- ============================================
--- 2. INVOICING SYSTEM
+-- 2. ESTIMATES SYSTEM
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS estimates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_number TEXT UNIQUE NOT NULL,
+  estimate_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  valid_until DATE,
+  customer_id UUID REFERENCES contacts(id) ON DELETE RESTRICT,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'accepted', 'rejected', 'expired', 'converted')),
+  subtotal NUMERIC DEFAULT 0,
+  tax_amount NUMERIC DEFAULT 0,
+  discount_amount NUMERIC DEFAULT 0,
+  total_amount NUMERIC NOT NULL DEFAULT 0,
+  currency TEXT DEFAULT 'INR',
+  notes TEXT,
+  terms_and_conditions TEXT,
+  converted_to_invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS estimate_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  estimate_id UUID REFERENCES estimates(id) ON DELETE CASCADE,
+  item_id UUID REFERENCES inventory_items(id) ON DELETE RESTRICT,
+  description TEXT,
+  quantity NUMERIC NOT NULL DEFAULT 1,
+  unit_price NUMERIC NOT NULL,
+  discount_percent NUMERIC DEFAULT 0,
+  tax_rate NUMERIC DEFAULT 0,
+  tax_amount NUMERIC DEFAULT 0,
+  line_total NUMERIC GENERATED ALWAYS AS (
+    (quantity * unit_price * (1 - discount_percent / 100)) + tax_amount
+  ) STORED,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_estimates_customer ON estimates(customer_id);
+CREATE INDEX IF NOT EXISTS idx_estimates_status ON estimates(status);
+CREATE INDEX IF NOT EXISTS idx_estimates_date ON estimates(estimate_date);
+CREATE INDEX IF NOT EXISTS idx_estimates_number ON estimates(estimate_number);
+CREATE INDEX IF NOT EXISTS idx_estimate_items_estimate ON estimate_items(estimate_id);
+
+-- ============================================
+-- 3. INVOICING SYSTEM
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -297,6 +343,8 @@ CREATE INDEX IF NOT EXISTS idx_tax_rates_active ON tax_rates(is_active);
 -- ============================================
 
 ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE estimates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE estimate_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invoice_payments ENABLE ROW LEVEL SECURITY;
@@ -348,7 +396,53 @@ CREATE POLICY "Admins can delete contacts"
   );
 
 -- ============================================
--- 9. RLS POLICIES - INVOICES
+-- 9. RLS POLICIES - ESTIMATES
+-- ============================================
+
+DROP POLICY IF EXISTS "Users can view estimates" ON estimates;
+CREATE POLICY "Users can view estimates"
+  ON estimates FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can insert estimates" ON estimates;
+CREATE POLICY "Authenticated users can insert estimates"
+  ON estimates FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Admins and creators can update estimates" ON estimates;
+CREATE POLICY "Admins and creators can update estimates"
+  ON estimates FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles ur
+      WHERE ur.user_id = auth.uid()
+      AND ur.role IN ('admin', 'creator')
+    )
+  );
+
+DROP POLICY IF EXISTS "Admins can delete estimates" ON estimates;
+CREATE POLICY "Admins can delete estimates"
+  ON estimates FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles ur
+      WHERE ur.user_id = auth.uid()
+      AND ur.role = 'admin'
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can view estimate items" ON estimate_items;
+CREATE POLICY "Users can view estimate items"
+  ON estimate_items FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can manage estimate items" ON estimate_items;
+CREATE POLICY "Authenticated users can manage estimate items"
+  ON estimate_items FOR ALL
+  USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- 10. RLS POLICIES - INVOICES
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view invoices" ON invoices;
@@ -405,7 +499,7 @@ CREATE POLICY "Authenticated users can manage invoice payments"
   USING (auth.role() = 'authenticated');
 
 -- ============================================
--- 10. RLS POLICIES - PURCHASE ORDERS & BILLS
+-- 11. RLS POLICIES - PURCHASE ORDERS & BILLS
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view purchase orders" ON purchase_orders;
@@ -544,6 +638,26 @@ CREATE POLICY "Admins can manage tax categories"
 -- 13. HELPER FUNCTIONS
 -- ============================================
 
+-- Function to generate estimate number
+CREATE OR REPLACE FUNCTION generate_estimate_number()
+RETURNS TEXT AS $$
+DECLARE
+  today DATE := CURRENT_DATE;
+  date_prefix TEXT;
+  sequence_num INTEGER;
+BEGIN
+  date_prefix := TO_CHAR(today, 'YYYYMMDD');
+  
+  -- Get next sequence number for today
+  SELECT COALESCE(MAX(CAST(SUBSTRING(estimate_number FROM LENGTH(date_prefix) + 2) AS INTEGER)), 0) + 1
+  INTO sequence_num
+  FROM estimates
+  WHERE estimate_number LIKE date_prefix || '-%';
+  
+  RETURN 'EST-' || date_prefix || '-' || LPAD(sequence_num::TEXT, 4, '0');
+END;
+$$ LANGUAGE plpgsql;
+
 -- Function to generate invoice number
 CREATE OR REPLACE FUNCTION generate_invoice_number()
 RETURNS TEXT AS $$
@@ -601,6 +715,41 @@ BEGIN
   RETURN 'BILL-' || date_prefix || '-' || LPAD(sequence_num::TEXT, 4, '0');
 END;
 $$ LANGUAGE plpgsql;
+
+-- Function to update estimate totals
+CREATE OR REPLACE FUNCTION update_estimate_totals()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE estimates
+  SET 
+    subtotal = COALESCE((
+      SELECT SUM(quantity * unit_price * (1 - discount_percent / 100))
+      FROM estimate_items
+      WHERE estimate_id = COALESCE(NEW.estimate_id, OLD.estimate_id)
+    ), 0),
+    tax_amount = COALESCE((
+      SELECT SUM(tax_amount)
+      FROM estimate_items
+      WHERE estimate_id = COALESCE(NEW.estimate_id, OLD.estimate_id)
+    ), 0),
+    total_amount = COALESCE((
+      SELECT SUM(line_total)
+      FROM estimate_items
+      WHERE estimate_id = COALESCE(NEW.estimate_id, OLD.estimate_id)
+    ), 0),
+    updated_at = NOW()
+  WHERE id = COALESCE(NEW.estimate_id, OLD.estimate_id);
+  
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to update estimate totals when items change
+DROP TRIGGER IF EXISTS trigger_update_estimate_totals ON estimate_items;
+CREATE TRIGGER trigger_update_estimate_totals
+  AFTER INSERT OR UPDATE OR DELETE ON estimate_items
+  FOR EACH ROW
+  EXECUTE FUNCTION update_estimate_totals();
 
 -- Function to update invoice totals
 CREATE OR REPLACE FUNCTION update_invoice_totals()

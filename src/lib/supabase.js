@@ -904,6 +904,100 @@ export const accounting = {
   },
 
   // ============================================
+  // ESTIMATES
+  // ============================================
+
+  async generateEstimateNumber() {
+    const { data, error } = await supabase.rpc('generate_estimate_number')
+    if (error) throw error
+    return data
+  },
+
+  async createEstimate(estimateData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    // Generate estimate number if not provided
+    if (!estimateData.estimate_number) {
+      estimateData.estimate_number = await this.generateEstimateNumber()
+    }
+
+    const { data, error } = await supabase
+      .from('estimates')
+      .insert([{
+        ...estimateData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async addEstimateItem(estimateId, itemData) {
+    const { data, error } = await supabase
+      .from('estimate_items')
+      .insert([{
+        ...itemData,
+        estimate_id: estimateId
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAllEstimates(filters = {}) {
+    let query = supabase
+      .from('estimates')
+      .select(`
+        *,
+        contacts (
+          id,
+          company_name,
+          contact_name,
+          email,
+          phone
+        )
+      `)
+      .order('estimate_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (filters.customer_id) {
+      query = query.eq('customer_id', filters.customer_id)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async getEstimateWithItems(estimateId) {
+    const { data: estimate, error: estimateError } = await supabase
+      .from('estimates')
+      .select(`
+        *,
+        contacts (*),
+        estimate_items (
+          *,
+          inventory_items (
+            item_code,
+            item_name,
+            unit
+          )
+        )
+      `)
+      .eq('id', estimateId)
+      .single()
+
+    if (estimateError) throw estimateError
+    return estimate
+  },
+
+  // ============================================
   // INVOICES
   // ============================================
 
