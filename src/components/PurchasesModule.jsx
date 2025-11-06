@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { accounting, inventory } from '../lib/supabase';
+import { accounting, inventory, auth } from '../lib/supabase';
 import { useRole } from '../hooks/useRole';
 
 export default function PurchasesModule() {
@@ -10,10 +10,20 @@ export default function PurchasesModule() {
   const [vendors, setVendors] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showBillForm, setShowBillForm] = useState(false);
   const [showPOForm, setShowPOForm] = useState(false);
 
-  const { canViewInventory, canManageInventory } = useRole();
+  const { canViewInventory } = useRole();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  async function checkAuth() {
+    const user = await auth.getCurrentUser();
+    setIsAuthenticated(!!user);
+  }
 
   const [billForm, setBillForm] = useState({
     vendor_id: '',
@@ -242,7 +252,7 @@ export default function PurchasesModule() {
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-bold text-gray-900">Purchases</h2>
-              {canManageInventory && (
+              {isAuthenticated && (
                 <div className="flex gap-2">
                   {activeTab === 'bills' && (
                     <button

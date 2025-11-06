@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { accounting } from '../lib/supabase';
+import { accounting, auth } from '../lib/supabase';
 import { useRole } from '../hooks/useRole';
 
 export default function ContactsModule() {
   const [activeTab, setActiveTab] = useState('customers'); // 'customers' or 'vendors'
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
 
-  const { canViewInventory, canManageInventory } = useRole();
+  const { canViewInventory } = useRole();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  async function checkAuth() {
+    const user = await auth.getCurrentUser();
+    setIsAuthenticated(!!user);
+  }
 
   const [contactForm, setContactForm] = useState({
     contact_type: 'customer',
