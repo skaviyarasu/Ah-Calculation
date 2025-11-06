@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import InvoicingModule from './InvoicingModule';
 import PurchasesModule from './PurchasesModule';
 import AccountsModule from './AccountsModule';
 import ContactsModule from './ContactsModule';
@@ -12,7 +11,6 @@ export default function AccountingDashboard() {
 
   const tabs = [
     { id: 'sales', label: 'Sales', icon: '💰', component: SalesManagement },
-    { id: 'invoicing', label: 'Invoicing', icon: '📄', component: InvoicingModule },
     { id: 'purchases', label: 'Purchases', icon: '🛒', component: PurchasesModule },
     { id: 'contacts', label: 'Contacts', icon: '👥', component: ContactsModule },
     { id: 'accounts', label: 'Accounts', icon: '📊', component: AccountsModule },
