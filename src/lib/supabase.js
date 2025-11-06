@@ -197,31 +197,54 @@ export const auth = {
 export const rbac = {
   // Get user's role
   async getUserRole(userId) {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .order('role')
-      .limit(1)
-      .single()
-    
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      console.error('Error getting user role:', error)
-      return 'user' // Default to 'user' role
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .order('role')
+        .limit(1)
+        .maybeSingle()
+      
+      if (error) {
+        console.error('Error getting user role:', error)
+        return 'user' // Default to 'user' role
+      }
+      
+      return data?.role || 'user'
+    } catch (error) {
+      console.error('Exception getting user role:', error)
+      return 'user'
     }
-    
-    return data?.role || 'user'
   },
 
   // Check if user has specific role
   async hasRole(userId, role) {
-    const userRole = await this.getUserRole(userId)
-    return userRole === role
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', role)
+        .maybeSingle()
+      
+      if (error) {
+        console.error('Error checking role:', error)
+        return false
+      }
+      
+      return !!data
+    } catch (error) {
+      console.error('Exception checking role:', error)
+      return false
+    }
   },
 
   // Check if user is admin
   async isAdmin(userId) {
-    return await this.hasRole(userId, 'admin')
+    const isAdmin = await this.hasRole(userId, 'admin')
+    console.log(`Admin check for ${userId}:`, isAdmin)
+    return isAdmin
   },
 
   // Check if user has permission
