@@ -275,11 +275,6 @@ export default function LoginGate({ children }) {
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-gray-700">Authenticated</span>
-              </div>
-              <span className="text-gray-400">|</span>
               <span className="text-sm text-gray-600">
                 Welcome, <strong className="text-gray-900">{currentUser?.user_metadata?.full_name || currentUser?.email}</strong>
               </span>
