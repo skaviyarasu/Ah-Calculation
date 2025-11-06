@@ -8,6 +8,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`02_add_serial_number_migration.sql`** - Migration to add serial_number column to existing databases
 - **`03_add_role_based_access_control.sql`** - Migration to add role-based access control (RBAC) system
 - **`04_fix_rls_recursion.sql`** - Fix for RLS infinite recursion error in user_roles policies
+- **`05_add_workflow_status.sql`** - Migration to add workflow status tracking and creator/verifier roles
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -17,7 +18,7 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`02_add_serial_number_migration.sql`** - Add serial_number column (run this if you have an existing database)
 - **`03_add_role_based_access_control.sql`** - Add role-based access control system (run this to enable admin/user roles)
 - **`04_fix_rls_recursion.sql`** - Fix infinite recursion error in RLS policies (run this if you get recursion errors)
-- **`05_*`** - Additional migrations (if needed in future)
+- **`05_add_workflow_status.sql`** - Add workflow status and creator/verifier roles (run this to enable job review workflow)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
@@ -100,12 +101,13 @@ When making schema changes:
 
 ## 📝 Schema Version
 
-**Current Version:** 3.0.0  
+**Current Version:** 4.0.0  
 **Last Updated:** 2025-01-26  
 **Compatible With:** AH Balancer v1.0+  
 **Changes:** 
 - Added serial_number column for job tracking (v2.0.0)
 - Added role-based access control system (v3.0.0)
+- Added workflow status tracking and creator/verifier roles (v4.0.0)
 
 ## 🔒 Security Notes
 

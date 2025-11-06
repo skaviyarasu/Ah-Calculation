@@ -127,7 +127,7 @@ export default function App() {
   const tableRef = useRef(null);
 
   // Role-based access control
-  const { userRole, isAdmin, loading: roleLoading, hasPermission } = useRole();
+  const { userRole, isAdmin, loading: roleLoading, hasPermission, currentUserId } = useRole();
 
   // Job/Customer metadata
   const [customerName, setCustomerName] = useState("");
@@ -144,15 +144,36 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
 
+  // Workflow state
+  const [currentJobStatus, setCurrentJobStatus] = useState('draft'); // draft, pending_review, needs_modification, approved, rejected
+  const [verificationNotes, setVerificationNotes] = useState("");
+  const [isCreator, setIsCreator] = useState(false);
+  const [isVerifier, setIsVerifier] = useState(false);
+  const [verificationNotesInput, setVerificationNotesInput] = useState("");
+
   // Ensure grid matches SxP
   useEffect(() => {
     setGrid((g) => Array.from({ length: S }, (_, i) => Array.from({ length: P }, (_, j) => (g[i]?.[j] ?? NaN))));
   }, [S, P]);
 
-  // Load user's saved jobs on mount
+  // Load user's saved jobs on mount and check roles
   useEffect(() => {
     loadSavedJobs();
+    checkUserRoles();
   }, []);
+
+  // Check user roles (creator/verifier)
+  async function checkUserRoles() {
+    if (!currentUserId) return;
+    try {
+      const creator = await rbac.isCreator(currentUserId);
+      const verifier = await rbac.isVerifier(currentUserId);
+      setIsCreator(creator);
+      setIsVerifier(verifier);
+    } catch (error) {
+      console.error('Error checking roles:', error);
+    }
+  }
 
   // Close search results when clicking outside (industry-standard UX)
   useEffect(() => {
@@ -262,7 +283,8 @@ export default function App() {
         battery_spec: batterySpec || null,
         series_count: S,
         parallel_count: P,
-        tolerance: tolerance
+        tolerance: tolerance,
+        status: currentJobId ? currentJobStatus : 'draft' // Keep existing status or default to draft
       };
 
       let job;
@@ -325,6 +347,11 @@ export default function App() {
       setS(job.series_count || 13);
       setP(job.parallel_count || 7);
       setTolerance(job.tolerance || 20);
+      
+      // Load workflow status
+      setCurrentJobStatus(job.status || 'draft');
+      setVerificationNotes(job.verification_notes || "");
+      setVerificationNotesInput("");
 
       // Load cell data
       const cellData = await db.getCellData(jobId);
@@ -393,8 +420,81 @@ export default function App() {
       setJobDate(new Date().toISOString().split('T')[0]);
       setBatterySpec("");
       setGrid(Array.from({ length: S }, () => Array.from({ length: P }, () => NaN)));
+      setCurrentJobStatus('draft');
+      setVerificationNotes("");
+      setVerificationNotesInput("");
     }
   }
+
+  // Workflow functions
+  async function submitForReview() {
+    if (!currentJobId) {
+      alert('Please save the job first before submitting for review');
+      return;
+    }
+
+    if (currentJobStatus !== 'draft' && currentJobStatus !== 'needs_modification') {
+      alert('Job must be in draft or needs_modification status to submit for review');
+      return;
+    }
+
+    try {
+      await db.submitJobForReview(currentJobId);
+      setCurrentJobStatus('pending_review');
+      await loadSavedJobs();
+      alert('Job submitted for review successfully!');
+    } catch (error) {
+      console.error('Submit error:', error);
+      alert('Failed to submit for review: ' + (error.message || 'Unknown error'));
+    }
+  }
+
+  async function verifyJob(status) {
+    if (!currentJobId) return;
+    
+    try {
+      await db.verifyJob(currentJobId, status, verificationNotesInput);
+      setCurrentJobStatus(status);
+      setVerificationNotes(verificationNotesInput);
+      setVerificationNotesInput("");
+      await loadSavedJobs();
+      alert(`Job ${status === 'approved' ? 'approved' : 'rejected'} successfully!`);
+    } catch (error) {
+      console.error('Verify error:', error);
+      alert('Failed to verify job: ' + (error.message || 'Unknown error'));
+    }
+  }
+
+  async function requestModification() {
+    if (!currentJobId) return;
+    
+    if (!verificationNotesInput.trim()) {
+      alert('Please provide notes explaining what modifications are needed');
+      return;
+    }
+
+    try {
+      await db.requestModification(currentJobId, verificationNotesInput);
+      setCurrentJobStatus('needs_modification');
+      setVerificationNotes(verificationNotesInput);
+      setVerificationNotesInput("");
+      await loadSavedJobs();
+      alert('Modification requested successfully! The creator will be notified.');
+    } catch (error) {
+      console.error('Request modification error:', error);
+      alert('Failed to request modification: ' + (error.message || 'Unknown error'));
+    }
+  }
+
+  // Check if job is editable (only in draft or needs_modification for creators)
+  const isEditable = useMemo(() => {
+    if (isAdmin) return true; // Admins can always edit
+    if (!currentJobId) return true; // New jobs are always editable
+    if (!isCreator && !isAdmin) return false; // Non-creators can't edit
+    
+    // Creators can only edit in draft or needs_modification
+    return currentJobStatus === 'draft' || currentJobStatus === 'needs_modification';
+  }, [currentJobId, currentJobStatus, isCreator, isAdmin]);
 
   const totals = useMemo(() => grid.map((r) => sums(r)), [grid]);
   const rMax = useMemo(() => totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0), [totals]);
@@ -431,6 +531,9 @@ export default function App() {
   }, [savedJobs, searchQuery]);
 
   function handleCellChange(i, j, v) {
+    if (!isEditable && currentJobId) {
+      return; // Prevent editing if job is not editable
+    }
     const n = String(v).trim() === "" ? NaN : Number(v);
     setGrid((g) => {
       const gg = g.map((r) => r.slice());
@@ -593,7 +696,25 @@ export default function App() {
           {/* Job Information Section */}
           <div className="mb-6 bg-blue-50 p-4 rounded-lg">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-blue-800">Job Information</h2>
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-semibold text-blue-800">Job Information</h2>
+                {currentJobId && (
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    currentJobStatus === 'draft' ? 'bg-gray-200 text-gray-700' :
+                    currentJobStatus === 'pending_review' ? 'bg-yellow-200 text-yellow-800' :
+                    currentJobStatus === 'needs_modification' ? 'bg-orange-200 text-orange-800' :
+                    currentJobStatus === 'approved' ? 'bg-green-200 text-green-800' :
+                    currentJobStatus === 'rejected' ? 'bg-red-200 text-red-800' :
+                    'bg-gray-200 text-gray-700'
+                  }`}>
+                    {currentJobStatus === 'draft' ? 'Draft' :
+                     currentJobStatus === 'pending_review' ? 'Pending Review' :
+                     currentJobStatus === 'needs_modification' ? 'Needs Modification' :
+                     currentJobStatus === 'approved' ? 'Approved' :
+                     currentJobStatus === 'rejected' ? 'Rejected' : 'Draft'}
+                  </span>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={newJob}
@@ -603,17 +724,82 @@ export default function App() {
                 </button>
                 <button
                   onClick={saveJob}
-                  disabled={saving}
+                  disabled={saving || !isEditable}
                   className={`px-4 py-2 rounded-md transition-colors text-sm ${
-                    saving
+                    saving || !isEditable
                       ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                       : 'bg-green-600 hover:bg-green-700 text-white'
                   }`}
+                  title={!isEditable && currentJobId ? 'Job is not in editable status. Only draft or needs_modification jobs can be edited.' : ''}
                 >
                   {saving ? 'Saving...' : currentJobId ? 'Update Job' : 'Save Job'}
                 </button>
+                {/* Submit for Review button (Creator only) */}
+                {isCreator && currentJobId && (currentJobStatus === 'draft' || currentJobStatus === 'needs_modification') && (
+                  <button
+                    onClick={submitForReview}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                  >
+                    Submit for Review
+                  </button>
+                )}
               </div>
             </div>
+            
+            {/* Verification Notes Display */}
+            {verificationNotes && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                <p className="text-sm font-medium text-yellow-800 mb-1">Verification Notes:</p>
+                <p className="text-sm text-yellow-700">{verificationNotes}</p>
+              </div>
+            )}
+
+            {/* Verifier Actions */}
+            {isVerifier && currentJobId && currentJobStatus === 'pending_review' && (
+              <div className="mb-4 p-4 bg-white border border-gray-300 rounded-md">
+                <p className="text-sm font-medium text-gray-700 mb-2">Review & Verification</p>
+                <textarea
+                  value={verificationNotesInput}
+                  onChange={(e) => setVerificationNotesInput(e.target.value)}
+                  placeholder="Enter verification notes..."
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-2"
+                  rows={3}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => verifyJob('approved')}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => verifyJob('rejected')}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={requestModification}
+                    className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                    disabled={!verificationNotesInput.trim()}
+                  >
+                    Request Modification
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {!isEditable && currentJobId && (
+              <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded-md">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Note:</span> This job is not editable in its current status. 
+                  {currentJobStatus === 'pending_review' && ' It is awaiting verification.'}
+                  {currentJobStatus === 'approved' && ' It has been approved.'}
+                  {currentJobStatus === 'rejected' && ' It has been rejected.'}
+                  {currentJobStatus === 'needs_modification' && isCreator && ' You can now edit and resubmit.'}
+                </p>
+              </div>
+            )}
             <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">
@@ -623,7 +809,10 @@ export default function App() {
               type="text"
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value.toUpperCase())}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 font-mono text-sm"
+              disabled={!isEditable && currentJobId}
+              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm ${
+                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50'
+              }`}
               placeholder="AH-YYYYMMDD-XXXX"
               title={currentJobId ? "Edit serial number for tracking" : "Auto-generated on save"}
             />
@@ -637,7 +826,10 @@ export default function App() {
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={!isEditable && currentJobId}
+              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
               placeholder="Enter customer name"
             />
           </div>
@@ -647,7 +839,10 @@ export default function App() {
               type="text"
               value={jobCard}
               onChange={(e) => setJobCard(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={!isEditable && currentJobId}
+              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
+              }`}
               placeholder="Enter job card number"
             />
           </div>
@@ -657,7 +852,10 @@ export default function App() {
               type="date"
               value={jobDate}
               onChange={(e) => setJobDate(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={!isEditable && currentJobId}
+                  className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
                 />
               </div>
           <div className="space-y-2">
@@ -666,7 +864,10 @@ export default function App() {
               type="text"
               value={batterySpec}
               onChange={(e) => setBatterySpec(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={!isEditable && currentJobId}
+                  className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
               placeholder="e.g., 48V 100Ah LiFePO4"
                 />
               </div>
@@ -903,10 +1104,12 @@ export default function App() {
                         return (
                           <td key={j} className="px-2 py-2">
                         <input
-                              className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""}`}
+                              className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""} ${!isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                               value={isFinite(v) ? v : ""}
                               onChange={(e) => handleCellChange(i, j, e.target.value)}
                               inputMode="numeric"
+                              disabled={!isEditable && currentJobId}
+                              title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
                         />
                       </td>
                         );

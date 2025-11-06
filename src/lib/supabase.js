@@ -139,6 +139,50 @@ export const db = {
     
     if (error) throw error
     return data
+  },
+
+  // Workflow functions
+  async submitJobForReview(jobId) {
+    const { data, error } = await supabase
+      .rpc('submit_job_for_review', { job_id: jobId })
+    
+    if (error) throw error
+    return data
+  },
+
+  async verifyJob(jobId, status, notes = null) {
+    const { data, error } = await supabase
+      .rpc('verify_job', {
+        job_id: jobId,
+        verification_status: status,
+        notes: notes
+      })
+    
+    if (error) throw error
+    return data
+  },
+
+  async requestModification(jobId, notes) {
+    const { data, error } = await supabase
+      .rpc('request_modification', {
+        job_id: jobId,
+        notes: notes
+      })
+    
+    if (error) throw error
+    return data
+  },
+
+  // Get all jobs for review (for verifiers)
+  async getJobsForReview() {
+    const { data, error } = await supabase
+      .from('battery_optimization_jobs')
+      .select('*')
+      .in('status', ['pending_review', 'approved', 'rejected', 'needs_modification'])
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    return data
   }
 }
 
@@ -358,5 +402,37 @@ export const rbac = {
         primary_role: userRoles.includes('admin') ? 'admin' : userRoles[0] || 'user'
       }
     })
+  },
+
+  // Check if user has role
+  async hasRole(userId, role) {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .eq('role', role)
+        .maybeSingle()
+      
+      if (error) {
+        console.error('Error checking role:', error)
+        return false
+      }
+      
+      return !!data
+    } catch (error) {
+      console.error('Exception checking role:', error)
+      return false
+    }
+  },
+
+  // Check if user is creator
+  async isCreator(userId) {
+    return await this.hasRole(userId, 'creator')
+  },
+
+  // Check if user is verifier
+  async isVerifier(userId) {
+    return await this.hasRole(userId, 'verifier')
   }
 }
