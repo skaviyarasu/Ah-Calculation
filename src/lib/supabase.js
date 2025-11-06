@@ -321,8 +321,11 @@ export const rbac = {
   },
 
   // Get all users with their roles (admin only)
+  // This function now includes users from both user_roles table and battery_optimization_jobs table
+  // to show all authenticated users, even if they don't have roles assigned yet
   async getAllUsersWithRoles() {
-    const { data, error } = await supabase
+    // Get users with roles
+    const { data: rolesData, error: rolesError } = await supabase
       .from('user_roles')
       .select(`
         id,
@@ -334,8 +337,70 @@ export const rbac = {
       `)
       .order('created_at', { ascending: false })
     
-    if (error) throw error
-    return data
+    if (rolesError) throw rolesError
+
+    // Get all unique user IDs from jobs table (users who have created jobs)
+    const { data: jobsData, error: jobsError } = await supabase
+      .from('battery_optimization_jobs')
+      .select('user_id, created_at')
+      .order('created_at', { ascending: false })
+    
+    if (jobsError) throw jobsError
+
+    // Combine user IDs from both sources
+    const allUserIds = new Set()
+    
+    // Add users from roles
+    if (rolesData) {
+      rolesData.forEach(role => allUserIds.add(role.user_id))
+    }
+    
+    // Add users from jobs
+    if (jobsData) {
+      jobsData.forEach(job => allUserIds.add(job.user_id))
+    }
+
+    // Create a map of user_id to their roles
+    const userRolesMap = new Map()
+    if (rolesData) {
+      rolesData.forEach(role => {
+        if (!userRolesMap.has(role.user_id)) {
+          userRolesMap.set(role.user_id, [])
+        }
+        userRolesMap.get(role.user_id).push({
+          id: role.id,
+          user_id: role.user_id,
+          role: role.role,
+          assigned_by: role.assigned_by,
+          created_at: role.created_at,
+          updated_at: role.updated_at
+        })
+      })
+    }
+
+    // Convert to array format matching the original structure
+    // For users without roles, create a placeholder entry
+    const result = []
+    allUserIds.forEach(userId => {
+      const roles = userRolesMap.get(userId) || []
+      if (roles.length > 0) {
+        // User has roles, add all role entries
+        result.push(...roles)
+      } else {
+        // User has no roles, add a single entry with null role info
+        // This ensures the user appears in the UI even without roles
+        result.push({
+          id: null, // No role entry ID since user has no roles
+          user_id: userId,
+          role: null, // Indicates no role assigned
+          assigned_by: null,
+          created_at: null,
+          updated_at: null
+        })
+      }
+    })
+
+    return result
   },
 
   // Assign role to user (admin only)

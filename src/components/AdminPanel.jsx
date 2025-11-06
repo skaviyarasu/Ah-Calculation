@@ -117,16 +117,24 @@ export default function AdminPanel() {
       if (!acc[userRole.user_id]) {
         acc[userRole.user_id] = [];
       }
+      // Add all role entries (including null roles which indicate user exists but has no roles)
       acc[userRole.user_id].push(userRole);
       return acc;
     }, {});
 
-    return Object.keys(usersByRole).map(userId => ({
-      id: userId,
-      roles: usersByRole[userId].map(ur => ur.role),
-      assigned_at: usersByRole[userId][0]?.created_at,
-      assigned_by: usersByRole[userId][0]?.assigned_by
-    }));
+    return Object.keys(usersByRole).map(userId => {
+      const roleEntries = usersByRole[userId];
+      // Filter out null roles and get actual roles
+      const actualRoles = roleEntries.map(ur => ur.role).filter(Boolean);
+      
+      return {
+        id: userId,
+        roles: actualRoles,
+        assigned_at: roleEntries.find(ur => ur.created_at)?.created_at,
+        assigned_by: roleEntries.find(ur => ur.assigned_by)?.assigned_by,
+        hasRoles: actualRoles.length > 0
+      };
+    });
   }, [users]);
 
   // Filter users based on search query
@@ -271,21 +279,31 @@ export default function AdminPanel() {
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2 mb-2">
-                              {user.roles.map((role) => (
-                                <span
-                                  key={role}
-                                  className={`px-3 py-1 rounded-full text-xs font-medium ${
-                                    role === 'admin'
-                                      ? 'bg-red-100 text-red-800 border border-red-200'
-                                      : 'bg-blue-100 text-blue-800 border border-blue-200'
-                                  }`}
-                                >
-                                  {role.toUpperCase()}
+                              {user.roles.length > 0 ? (
+                                user.roles.map((role) => (
+                                  <span
+                                    key={role}
+                                    className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                      role === 'admin'
+                                        ? 'bg-red-100 text-red-800 border border-red-200'
+                                        : role === 'creator'
+                                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                        : role === 'verifier'
+                                        ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                                        : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    }`}
+                                  >
+                                    {role.toUpperCase()}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                  NO ROLES
                                 </span>
-                              ))}
+                              )}
                             </div>
                           </div>
-                          <div className="flex gap-2 ml-4">
+                          <div className="flex flex-wrap gap-2 ml-4">
                             <button
                               onClick={() => handleAssignRole(user.id, 'admin')}
                               disabled={user.roles.includes('admin') || assigningRole}
@@ -301,6 +319,22 @@ export default function AdminPanel() {
                               title="Remove Admin Role"
                             >
                               Remove Admin
+                            </button>
+                            <button
+                              onClick={() => handleAssignRole(user.id, 'creator')}
+                              disabled={user.roles.includes('creator') || assigningRole}
+                              className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                              title="Assign Creator Role"
+                            >
+                              Make Creator
+                            </button>
+                            <button
+                              onClick={() => handleAssignRole(user.id, 'verifier')}
+                              disabled={user.roles.includes('verifier') || assigningRole}
+                              className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                              title="Assign Verifier Role"
+                            >
+                              Make Verifier
                             </button>
                           </div>
                         </div>
@@ -326,13 +360,27 @@ export default function AdminPanel() {
                       className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => selectedUser && handleAssignRole(selectedUser, 'admin')}
                       disabled={!selectedUser || assigningRole}
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                       {assigningRole ? 'Assigning...' : 'Assign Admin Role'}
+                    </button>
+                    <button
+                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'creator')}
+                      disabled={!selectedUser || assigningRole}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {assigningRole ? 'Assigning...' : 'Assign Creator Role'}
+                    </button>
+                    <button
+                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'verifier')}
+                      disabled={!selectedUser || assigningRole}
+                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {assigningRole ? 'Assigning...' : 'Assign Verifier Role'}
                     </button>
                     <button
                       onClick={() => selectedUser && handleAssignRole(selectedUser, 'user')}
