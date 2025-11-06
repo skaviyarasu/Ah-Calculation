@@ -6,6 +6,10 @@ import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
 import SalesManagement from "./components/SalesManagement";
 import PLDashboard from "./components/PLDashboard";
+import InvoicingModule from "./components/InvoicingModule";
+import PurchasesModule from "./components/PurchasesModule";
+import AccountsModule from "./components/AccountsModule";
+import ContactsModule from "./components/ContactsModule";
 import { useRole } from "./hooks/useRole";
 
 function MainApp() {
@@ -19,9 +23,10 @@ function MainApp() {
     }
   }, [currentView, isAdmin, loading]);
 
-  // Redirect away from inventory/sales/P&L views if user doesn't have permission
+  // Redirect away from inventory/sales/P&L/accounting views if user doesn't have permission
   useEffect(() => {
-    if ((currentView === "inventory" || currentView === "sales" || currentView === "pl-dashboard") && !loading && !canViewInventory) {
+    const accountingViews = ["inventory", "sales", "pl-dashboard", "invoicing", "purchases", "accounts", "contacts"];
+    if (accountingViews.includes(currentView) && !loading && !canViewInventory) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, canViewInventory, loading]);
@@ -32,6 +37,10 @@ function MainApp() {
     ...(canViewInventory ? [
       { id: "inventory", label: "Inventory", description: "Stock Management" },
       { id: "sales", label: "Sales", description: "Sales Management" },
+      { id: "invoicing", label: "Invoicing", description: "Invoice Management" },
+      { id: "purchases", label: "Purchases", description: "Bills & Purchase Orders" },
+      { id: "accounts", label: "Accounts", description: "AR/AP Management" },
+      { id: "contacts", label: "Contacts", description: "Customers & Vendors" },
       { id: "pl-dashboard", label: "P&L Dashboard", description: "Profit & Loss Reports" }
     ] : []),
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", description: "Role & Access Management" }] : [])
@@ -90,6 +99,10 @@ function MainApp() {
         {currentView === "row-column" && <RowColumnCalculator />}
         {currentView === "inventory" && <InventoryManagement />}
         {currentView === "sales" && <SalesManagement />}
+        {currentView === "invoicing" && <InvoicingModule />}
+        {currentView === "purchases" && <PurchasesModule />}
+        {currentView === "accounts" && <AccountsModule />}
+        {currentView === "contacts" && <ContactsModule />}
         {currentView === "pl-dashboard" && <PLDashboard />}
         {currentView === "admin" && isAdmin ? (
           <AdminPanel />

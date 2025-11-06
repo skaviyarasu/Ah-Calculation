@@ -830,3 +830,423 @@ export const inventory = {
     return data
   }
 }
+
+// ============================================
+// ACCOUNTING SYSTEM API FUNCTIONS
+// ============================================
+
+export const accounting = {
+  // ============================================
+  // CONTACTS (Customers & Vendors)
+  // ============================================
+
+  async getAllContacts(filters = {}) {
+    let query = supabase
+      .from('contacts')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (filters.contact_type) {
+      query = query.eq('contact_type', filters.contact_type)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async getContactById(contactId) {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('id', contactId)
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async createContact(contactData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert([{
+        ...contactData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async updateContact(contactId, updates) {
+    const { data, error } = await supabase
+      .from('contacts')
+      .update(updates)
+      .eq('id', contactId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async deleteContact(contactId) {
+    const { error } = await supabase
+      .from('contacts')
+      .delete()
+      .eq('id', contactId)
+    if (error) throw error
+  },
+
+  // ============================================
+  // INVOICES
+  // ============================================
+
+  async generateInvoiceNumber() {
+    const { data, error } = await supabase.rpc('generate_invoice_number')
+    if (error) throw error
+    return data
+  },
+
+  async createInvoice(invoiceData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    // Generate invoice number if not provided
+    if (!invoiceData.invoice_number) {
+      invoiceData.invoice_number = await this.generateInvoiceNumber()
+    }
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([{
+        ...invoiceData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async addInvoiceItem(invoiceId, itemData) {
+    const { data, error } = await supabase
+      .from('invoice_items')
+      .insert([{
+        ...itemData,
+        invoice_id: invoiceId
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getInvoiceWithItems(invoiceId) {
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('invoices')
+      .select(`
+        *,
+        contacts (*),
+        invoice_items (
+          *,
+          inventory_items (
+            item_code,
+            item_name,
+            unit
+          )
+        ),
+        invoice_payments (*)
+      `)
+      .eq('id', invoiceId)
+      .single()
+
+    if (invoiceError) throw invoiceError
+    return invoice
+  },
+
+  async getAllInvoices(filters = {}) {
+    let query = supabase
+      .from('invoices')
+      .select(`
+        *,
+        contacts (
+          id,
+          company_name,
+          contact_name,
+          email,
+          phone
+        )
+      `)
+      .order('invoice_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (filters.customer_id) {
+      query = query.eq('customer_id', filters.customer_id)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+    if (filters.start_date) {
+      query = query.gte('invoice_date', filters.start_date)
+    }
+    if (filters.end_date) {
+      query = query.lte('invoice_date', filters.end_date)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async updateInvoice(invoiceId, updates) {
+    const { data, error } = await supabase
+      .from('invoices')
+      .update(updates)
+      .eq('id', invoiceId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async recordInvoicePayment(paymentData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('invoice_payments')
+      .insert([{
+        ...paymentData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAccountsReceivable() {
+    const { data, error } = await supabase.rpc('get_accounts_receivable_summary')
+    if (error) throw error
+    return data || []
+  },
+
+  // ============================================
+  // PURCHASE ORDERS & BILLS
+  // ============================================
+
+  async generatePONumber() {
+    const { data, error } = await supabase.rpc('generate_po_number')
+    if (error) throw error
+    return data
+  },
+
+  async generateBillNumber() {
+    const { data, error } = await supabase.rpc('generate_bill_number')
+    if (error) throw error
+    return data
+  },
+
+  async createPurchaseOrder(poData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    if (!poData.po_number) {
+      poData.po_number = await this.generatePONumber()
+    }
+
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .insert([{
+        ...poData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async createBill(billData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    if (!billData.bill_number) {
+      billData.bill_number = await this.generateBillNumber()
+    }
+
+    const { data, error } = await supabase
+      .from('bills')
+      .insert([{
+        ...billData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAllBills(filters = {}) {
+    let query = supabase
+      .from('bills')
+      .select(`
+        *,
+        contacts (
+          id,
+          company_name,
+          contact_name,
+          email,
+          phone
+        )
+      `)
+      .order('bill_date', { ascending: false })
+
+    if (filters.vendor_id) {
+      query = query.eq('vendor_id', filters.vendor_id)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async recordBillPayment(paymentData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('bill_payments')
+      .insert([{
+        ...paymentData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAccountsPayable() {
+    const { data, error } = await supabase.rpc('get_accounts_payable_summary')
+    if (error) throw error
+    return data || []
+  },
+
+  // ============================================
+  // BANKING
+  // ============================================
+
+  async getAllBankAccounts() {
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .select('*')
+      .order('account_name', { ascending: true })
+    if (error) throw error
+    return data || []
+  },
+
+  async createBankAccount(accountData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('bank_accounts')
+      .insert([{
+        ...accountData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getBankTransactions(filters = {}) {
+    let query = supabase
+      .from('bank_transactions')
+      .select(`
+        *,
+        bank_accounts (
+          account_name,
+          bank_name
+        )
+      `)
+      .order('transaction_date', { ascending: false })
+
+    if (filters.bank_account_id) {
+      query = query.eq('bank_account_id', filters.bank_account_id)
+    }
+    if (filters.start_date) {
+      query = query.gte('transaction_date', filters.start_date)
+    }
+    if (filters.end_date) {
+      query = query.lte('transaction_date', filters.end_date)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async createBankTransaction(transactionData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('bank_transactions')
+      .insert([{
+        ...transactionData,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // ============================================
+  // TAX MANAGEMENT
+  // ============================================
+
+  async getAllTaxRates() {
+    const { data, error } = await supabase
+      .from('tax_rates')
+      .select('*')
+      .eq('is_active', true)
+      .order('tax_name', { ascending: true })
+    if (error) throw error
+    return data || []
+  },
+
+  async createTaxRate(taxData) {
+    const { data, error } = await supabase
+      .from('tax_rates')
+      .insert([taxData])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAllTaxCategories() {
+    const { data, error } = await supabase
+      .from('tax_categories')
+      .select(`
+        *,
+        tax_rates (*)
+      `)
+      .order('category_name', { ascending: true })
+    if (error) throw error
+    return data || []
+  }
+}
