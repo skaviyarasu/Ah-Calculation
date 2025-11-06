@@ -61,7 +61,7 @@ export default function PurchasesModule() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="py-8 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading purchases...</p>
@@ -71,7 +71,7 @@ export default function PurchasesModule() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="py-8">
       <div className="max-w-7xl mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -81,7 +81,7 @@ export default function PurchasesModule() {
           {/* Header */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-3xl font-bold text-gray-900">Purchases</h1>
+              <h2 className="text-2xl font-bold text-gray-900">Purchases</h2>
               {canManageInventory && (
                 <button
                   onClick={() => setShowBillForm(true)}

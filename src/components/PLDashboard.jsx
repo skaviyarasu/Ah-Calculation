@@ -97,7 +97,7 @@ export default function PLDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="py-8 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading P&L Report...</p>
@@ -107,7 +107,7 @@ export default function PLDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="py-8">
       <div className="max-w-7xl mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -116,7 +116,7 @@ export default function PLDashboard() {
         >
           {/* Header */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">Profit & Loss Dashboard</h1>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Profit & Loss Reports</h2>
             
             {/* Date Range Selector */}
             <div className="flex flex-wrap items-center gap-4 mb-4">

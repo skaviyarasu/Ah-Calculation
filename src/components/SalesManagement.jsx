@@ -125,7 +125,7 @@ export default function SalesManagement() {
 
   if (loading || roleLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="py-8 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading sales data...</p>
@@ -136,14 +136,14 @@ export default function SalesManagement() {
 
   if (!canViewInventory) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="py-8 flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center border border-red-200">
           <div className="text-red-600 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h2>
           <p className="text-gray-600 mb-4">You do not have permission to access the Sales Management module.</p>
           <p className="text-sm text-gray-500">Please contact an administrator to grant you access permissions.</p>
         </div>
@@ -152,7 +152,7 @@ export default function SalesManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="py-8">
       <div className="max-w-7xl mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -162,7 +162,7 @@ export default function SalesManagement() {
           {/* Header */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-3xl font-bold text-gray-900">Sales Management</h1>
+              <h2 className="text-2xl font-bold text-gray-900">Sales</h2>
               {canManageInventory && (
                 <button
                   onClick={() => setShowSalesForm(true)}

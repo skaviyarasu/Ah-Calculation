@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import App from "./App";
-import RowColumnCalculator from "./RowColumnCalculator";
 import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
-import SalesManagement from "./components/SalesManagement";
-import PLDashboard from "./components/PLDashboard";
-import InvoicingModule from "./components/InvoicingModule";
-import PurchasesModule from "./components/PurchasesModule";
-import AccountsModule from "./components/AccountsModule";
-import ContactsModule from "./components/ContactsModule";
+import AccountingDashboard from "./components/AccountingDashboard";
 import { useRole } from "./hooks/useRole";
 
 function MainApp() {
@@ -23,25 +17,19 @@ function MainApp() {
     }
   }, [currentView, isAdmin, loading]);
 
-  // Redirect away from inventory/sales/P&L/accounting views if user doesn't have permission
+  // Redirect away from inventory/accounting views if user doesn't have permission
   useEffect(() => {
-    const accountingViews = ["inventory", "sales", "pl-dashboard", "invoicing", "purchases", "accounts", "contacts"];
-    if (accountingViews.includes(currentView) && !loading && !canViewInventory) {
+    const restrictedViews = ["inventory", "accounting"];
+    if (restrictedViews.includes(currentView) && !loading && !canViewInventory) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, canViewInventory, loading]);
 
   const navigationItems = [
     { id: "ah-balancer", label: "AH Balancer", description: "Interactive 13SxP Optimizer" },
-    { id: "row-column", label: "Row & Column Calculator", description: "Simple grid with row sums" },
     ...(canViewInventory ? [
       { id: "inventory", label: "Inventory", description: "Stock Management" },
-      { id: "sales", label: "Sales", description: "Sales Management" },
-      { id: "invoicing", label: "Invoicing", description: "Invoice Management" },
-      { id: "purchases", label: "Purchases", description: "Bills & Purchase Orders" },
-      { id: "accounts", label: "Accounts", description: "AR/AP Management" },
-      { id: "contacts", label: "Contacts", description: "Customers & Vendors" },
-      { id: "pl-dashboard", label: "P&L Dashboard", description: "Profit & Loss Reports" }
+      { id: "accounting", label: "Accounting", description: "Sales, Invoicing, Purchases & Reports" }
     ] : []),
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", description: "Role & Access Management" }] : [])
   ];
@@ -96,14 +84,8 @@ function MainApp() {
         className="max-w-7xl mx-auto"
       >
         {currentView === "ah-balancer" && <App />}
-        {currentView === "row-column" && <RowColumnCalculator />}
         {currentView === "inventory" && <InventoryManagement />}
-        {currentView === "sales" && <SalesManagement />}
-        {currentView === "invoicing" && <InvoicingModule />}
-        {currentView === "purchases" && <PurchasesModule />}
-        {currentView === "accounts" && <AccountsModule />}
-        {currentView === "contacts" && <ContactsModule />}
-        {currentView === "pl-dashboard" && <PLDashboard />}
+        {currentView === "accounting" && <AccountingDashboard />}
         {currentView === "admin" && isAdmin ? (
           <AdminPanel />
         ) : currentView === "admin" && !isAdmin ? (
