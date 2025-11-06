@@ -7,6 +7,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`01_battery_optimization_schema.sql`** - Complete database schema (tables, indexes, policies, triggers)
 - **`02_add_serial_number_migration.sql`** - Migration to add serial_number column to existing databases
 - **`03_add_role_based_access_control.sql`** - Migration to add role-based access control (RBAC) system
+- **`04_fix_rls_recursion.sql`** - Fix for RLS infinite recursion error in user_roles policies
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -15,7 +16,8 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`01_battery_optimization_schema.sql`** - Initial schema setup (run this first for new databases)
 - **`02_add_serial_number_migration.sql`** - Add serial_number column (run this if you have an existing database)
 - **`03_add_role_based_access_control.sql`** - Add role-based access control system (run this to enable admin/user roles)
-- **`04_*`** - Additional migrations (if needed in future)
+- **`04_fix_rls_recursion.sql`** - Fix infinite recursion error in RLS policies (run this if you get recursion errors)
+- **`05_*`** - Additional migrations (if needed in future)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 

@@ -86,8 +86,32 @@ ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE role_permissions ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
--- 6. CREATE SECURITY POLICIES
+-- 6. CREATE HELPER FUNCTIONS FOR POLICIES (BEFORE POLICIES)
 -- ============================================
+
+-- Function to check if current user is admin (bypasses RLS to avoid recursion)
+-- This function uses SECURITY DEFINER to bypass RLS when checking admin status
+CREATE OR REPLACE FUNCTION is_current_user_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM user_roles 
+    WHERE user_id = auth.uid() 
+    AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+-- ============================================
+-- 7. CREATE SECURITY POLICIES
+-- ============================================
+
+-- Drop existing policies if they exist (to allow re-running this migration)
+DROP POLICY IF EXISTS "Users can view own role" ON user_roles;
+DROP POLICY IF EXISTS "Admins can view all roles" ON user_roles;
+DROP POLICY IF EXISTS "Admins can insert roles" ON user_roles;
+DROP POLICY IF EXISTS "Admins can update roles" ON user_roles;
+DROP POLICY IF EXISTS "Admins can delete roles" ON user_roles;
 
 -- User Roles policies
 -- Users can view their own role
@@ -98,44 +122,32 @@ CREATE POLICY "Users can view own role" ON user_roles
 CREATE POLICY "Admins can view all roles" ON user_roles
   FOR SELECT USING (
     auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- Only admins can insert roles
 CREATE POLICY "Admins can insert roles" ON user_roles
   FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- Only admins can update roles
 CREATE POLICY "Admins can update roles" ON user_roles
   FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- Only admins can delete roles
 CREATE POLICY "Admins can delete roles" ON user_roles
   FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- Role Permissions policies
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Anyone can view role permissions" ON role_permissions;
+DROP POLICY IF EXISTS "Admins can manage permissions" ON role_permissions;
+
 -- Everyone can view role permissions (read-only for transparency)
 CREATE POLICY "Anyone can view role permissions" ON role_permissions
   FOR SELECT USING (true);
@@ -143,15 +155,11 @@ CREATE POLICY "Anyone can view role permissions" ON role_permissions
 -- Only admins can manage permissions
 CREATE POLICY "Admins can manage permissions" ON role_permissions
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- ============================================
--- 7. CREATE HELPER FUNCTIONS
+-- 8. CREATE HELPER FUNCTIONS (for application use)
 -- ============================================
 
 -- Function to check if user has a specific role
@@ -242,38 +250,27 @@ DROP POLICY IF EXISTS "Admins can view all optimization jobs" ON battery_optimiz
 CREATE POLICY "Admins can view all optimization jobs" ON battery_optimization_jobs
   FOR SELECT USING (
     auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 DROP POLICY IF EXISTS "Admins can edit all optimization jobs" ON battery_optimization_jobs;
 CREATE POLICY "Admins can edit all optimization jobs" ON battery_optimization_jobs
   FOR UPDATE USING (
     auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 DROP POLICY IF EXISTS "Admins can delete all optimization jobs" ON battery_optimization_jobs;
 CREATE POLICY "Admins can delete all optimization jobs" ON battery_optimization_jobs
   FOR DELETE USING (
     auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM user_roles 
-      WHERE user_id = auth.uid() 
-      AND role = 'admin'
-    )
+    is_current_user_admin()
   );
 
 -- ============================================
 -- 9. CREATE TRIGGER FOR UPDATED_AT
 -- ============================================
+-- Note: update_updated_at_column function may already exist from schema 01
 
 -- Create function for updating updated_at timestamp (if not exists)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -283,6 +280,9 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Drop trigger if exists (to allow re-running this migration)
+DROP TRIGGER IF EXISTS update_user_roles_updated_at ON user_roles;
 
 -- Trigger to automatically update updated_at timestamp
 CREATE TRIGGER update_user_roles_updated_at 
