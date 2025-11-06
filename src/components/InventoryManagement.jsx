@@ -7,21 +7,9 @@ import Barcode from './Barcode';
 export default function InventoryManagement() {
   const [items, setItems] = useState([]);
   const [transactions, setTransactions] = useState([]);
-  const [salesTransactions, setSalesTransactions] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('items'); // items, transactions, sales, low-stock
-  const [showSalesForm, setShowSalesForm] = useState(false);
-  const [salesForm, setSalesForm] = useState({
-    item_id: '',
-    transaction_date: new Date().toISOString().split('T')[0],
-    quantity: '',
-    unit_selling_price: '',
-    customer_name: '',
-    invoice_number: '',
-    reference_number: '',
-    notes: ''
-  });
+  const [activeTab, setActiveTab] = useState('items'); // items, transactions, low-stock
   const [showItemForm, setShowItemForm] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -93,15 +81,13 @@ export default function InventoryManagement() {
   async function loadData() {
     setLoading(true);
     try {
-      const [itemsData, transactionsData, salesData, lowStockData] = await Promise.all([
+      const [itemsData, transactionsData, lowStockData] = await Promise.all([
         inventory.getAllItems(),
         inventory.getAllTransactions(),
-        inventory.getAllSalesTransactions(),
         inventory.getLowStockItems()
       ]);
       setItems(itemsData || []);
       setTransactions(transactionsData || []);
-      setSalesTransactions(salesData || []);
       setLowStockItems(lowStockData || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -296,49 +282,6 @@ export default function InventoryManagement() {
     }
   }
 
-  // Handle sales form
-  function handleSalesFormChange(e) {
-    const { name, value } = e.target;
-    setSalesForm(prev => ({
-      ...prev,
-      [name]: value === '' ? '' : (name === 'quantity' || name === 'unit_selling_price' ? parseFloat(value) || '' : value)
-    }));
-  }
-
-  async function handleSalesSubmit(e) {
-    e.preventDefault();
-    try {
-      const salesData = {
-        ...salesForm,
-        item_id: salesForm.item_id,
-        transaction_date: salesForm.transaction_date,
-        quantity: parseInt(salesForm.quantity),
-        unit_selling_price: parseFloat(salesForm.unit_selling_price),
-        customer_name: salesForm.customer_name || null,
-        invoice_number: salesForm.invoice_number || null,
-        reference_number: salesForm.reference_number || null,
-        notes: salesForm.notes || null
-      };
-
-      await inventory.createSalesTransaction(salesData);
-      await loadData();
-      setShowSalesForm(false);
-      setSalesForm({
-        item_id: '',
-        transaction_date: new Date().toISOString().split('T')[0],
-        quantity: '',
-        unit_selling_price: '',
-        customer_name: '',
-        invoice_number: '',
-        reference_number: '',
-        notes: ''
-      });
-      alert('Sale recorded successfully! COGS and profit calculated automatically.');
-    } catch (error) {
-      console.error('Error creating sales transaction:', error);
-      alert('Failed to create sales transaction: ' + error.message);
-    }
-  }
 
   function getStockStatus(item) {
     if (item.current_stock <= item.min_stock_level) return 'low';
@@ -459,16 +402,6 @@ export default function InventoryManagement() {
               }`}
             >
               Transactions ({transactions.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('sales')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'sales'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Sales
             </button>
             <button
               onClick={() => setActiveTab('low-stock')}
@@ -664,87 +597,6 @@ export default function InventoryManagement() {
                 {transactions.length === 0 && (
                   <div className="text-center py-8 text-gray-500">No transactions found.</div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Sales Tab */}
-          {activeTab === 'sales' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900">Sales Transactions</h2>
-                <button
-                  onClick={() => setShowSalesForm(true)}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors font-medium"
-                >
-                  + New Sale
-                </button>
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                <p className="text-sm text-blue-800">
-                  💡 <strong>Note:</strong> Sales transactions automatically calculate COGS based on the item's cost method (FIFO, LIFO, or Weighted Average).
-                  Revenue, COGS, and gross profit are calculated automatically.
-                </p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Qty</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Revenue</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">COGS</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Profit</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Margin %</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {salesTransactions.length === 0 ? (
-                      <tr>
-                        <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
-                          No sales transactions yet. Click "New Sale" to create one.
-                        </td>
-                      </tr>
-                    ) : (
-                      salesTransactions.map((sale) => (
-                        <tr key={sale.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                            {new Date(sale.transaction_date).toLocaleDateString()}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                            {sale.inventory_items?.item_code || 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                            {sale.customer_name || 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-900">
-                            {sale.quantity}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-blue-600 font-medium">
-                            ₹{sale.total_revenue?.toFixed(2) || '0.00'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-red-600 font-medium">
-                            ₹{sale.total_cogs?.toFixed(2) || '0.00'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right text-green-600 font-medium">
-                            ₹{sale.gross_profit?.toFixed(2) || '0.00'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
-                            <span className={`font-medium ${
-                              sale.gross_profit_margin >= 30 ? 'text-green-600' :
-                              sale.gross_profit_margin >= 20 ? 'text-yellow-600' :
-                              'text-red-600'
-                            }`}>
-                              {sale.gross_profit_margin?.toFixed(2) || '0.00'}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           )}
@@ -1252,149 +1104,6 @@ export default function InventoryManagement() {
             </div>
           )}
 
-          {/* Sales Form Modal */}
-          {showSalesForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">Record New Sale</h2>
-                <form onSubmit={handleSalesSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Item *</label>
-                      <select
-                        name="item_id"
-                        value={salesForm.item_id}
-                        onChange={handleSalesFormChange}
-                        required
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      >
-                        <option value="">Select Item</option>
-                        {items.filter(item => item.status === 'active' && item.current_stock > 0).map(item => (
-                          <option key={item.id} value={item.id}>
-                            {item.item_code} - {item.item_name} (Stock: {item.current_stock})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Transaction Date *</label>
-                      <input
-                        type="date"
-                        name="transaction_date"
-                        value={salesForm.transaction_date}
-                        onChange={handleSalesFormChange}
-                        required
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                      <input
-                        type="number"
-                        name="quantity"
-                        value={salesForm.quantity}
-                        onChange={handleSalesFormChange}
-                        required
-                        min="1"
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Unit Selling Price *</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        name="unit_selling_price"
-                        value={salesForm.unit_selling_price}
-                        onChange={handleSalesFormChange}
-                        required
-                        min="0"
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
-                      <input
-                        type="text"
-                        name="customer_name"
-                        value={salesForm.customer_name}
-                        onChange={handleSalesFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Number</label>
-                      <input
-                        type="text"
-                        name="invoice_number"
-                        value={salesForm.invoice_number}
-                        onChange={handleSalesFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
-                    <input
-                      type="text"
-                      name="reference_number"
-                      value={salesForm.reference_number}
-                      onChange={handleSalesFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="Job card, order number, etc."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                    <textarea
-                      name="notes"
-                      value={salesForm.notes}
-                      onChange={handleSalesFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows="3"
-                    />
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                    <p className="text-sm text-blue-800">
-                      💡 <strong>Note:</strong> COGS will be calculated automatically based on the item's cost method (FIFO, LIFO, or Weighted Average).
-                      Revenue, COGS, and gross profit will be calculated and stored.
-                    </p>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSalesForm(false);
-                        setSalesForm({
-                          item_id: '',
-                          transaction_date: new Date().toISOString().split('T')[0],
-                          quantity: '',
-                          unit_selling_price: '',
-                          customer_name: '',
-                          invoice_number: '',
-                          reference_number: '',
-                          notes: ''
-                        });
-                      }}
-                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"
-                    >
-                      Record Sale
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
         </motion.div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import App from "./App";
 import RowColumnCalculator from "./RowColumnCalculator";
 import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
+import SalesManagement from "./components/SalesManagement";
 import PLDashboard from "./components/PLDashboard";
 import { useRole } from "./hooks/useRole";
 
@@ -18,9 +19,9 @@ function MainApp() {
     }
   }, [currentView, isAdmin, loading]);
 
-  // Redirect away from inventory/P&L views if user doesn't have permission
+  // Redirect away from inventory/sales/P&L views if user doesn't have permission
   useEffect(() => {
-    if ((currentView === "inventory" || currentView === "pl-dashboard") && !loading && !canViewInventory) {
+    if ((currentView === "inventory" || currentView === "sales" || currentView === "pl-dashboard") && !loading && !canViewInventory) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, canViewInventory, loading]);
@@ -30,6 +31,7 @@ function MainApp() {
     { id: "row-column", label: "Row & Column Calculator", description: "Simple grid with row sums" },
     ...(canViewInventory ? [
       { id: "inventory", label: "Inventory", description: "Stock Management" },
+      { id: "sales", label: "Sales", description: "Sales Management" },
       { id: "pl-dashboard", label: "P&L Dashboard", description: "Profit & Loss Reports" }
     ] : []),
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", description: "Role & Access Management" }] : [])
@@ -87,6 +89,7 @@ function MainApp() {
         {currentView === "ah-balancer" && <App />}
         {currentView === "row-column" && <RowColumnCalculator />}
         {currentView === "inventory" && <InventoryManagement />}
+        {currentView === "sales" && <SalesManagement />}
         {currentView === "pl-dashboard" && <PLDashboard />}
         {currentView === "admin" && isAdmin ? (
           <AdminPanel />
