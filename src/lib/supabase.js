@@ -1167,6 +1167,46 @@ export const accounting = {
     return data
   },
 
+  async addPurchaseOrderItem(poId, itemData) {
+    const { data, error } = await supabase
+      .from('purchase_order_items')
+      .insert([{
+        ...itemData,
+        po_id: poId
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getAllPurchaseOrders(filters = {}) {
+    let query = supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        contacts (
+          id,
+          company_name,
+          contact_name,
+          email,
+          phone
+        )
+      `)
+      .order('po_date', { ascending: false })
+
+    if (filters.vendor_id) {
+      query = query.eq('vendor_id', filters.vendor_id)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
   async createBill(billData) {
     const user = await auth.getCurrentUser()
     if (!user) throw new Error('User not authenticated')
@@ -1180,6 +1220,19 @@ export const accounting = {
       .insert([{
         ...billData,
         created_by: user.id
+      }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async addBillItem(billId, itemData) {
+    const { data, error } = await supabase
+      .from('bill_items')
+      .insert([{
+        ...itemData,
+        bill_id: billId
       }])
       .select()
       .single()
