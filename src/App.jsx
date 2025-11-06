@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
-import { db, auth, supabase } from "./lib/supabase";
+import { db, auth, supabase, rbac } from "./lib/supabase";
+import { useRole } from "./hooks/useRole";
 
 /**
  * Ah Balancer — Interactive 13SxP Optimizer (React)
@@ -125,6 +126,9 @@ export default function App() {
   const [pasteText, setPasteText] = useState("");
   const tableRef = useRef(null);
 
+  // Role-based access control
+  const { userRole, isAdmin, loading: roleLoading, hasPermission } = useRole();
+
   // Job/Customer metadata
   const [customerName, setCustomerName] = useState("");
   const [jobCard, setJobCard] = useState("");
@@ -174,7 +178,22 @@ export default function App() {
         return;
       }
 
-      const jobs = await db.getUserJobs(user.id);
+      // Check if user has permission to view all jobs (admin) or own jobs
+      let jobs;
+      if (isAdmin && await hasPermission('view_all_jobs', 'jobs')) {
+        // Admin can view all jobs
+        const { data, error } = await supabase
+          .from('battery_optimization_jobs')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        jobs = data;
+      } else {
+        // Regular user can only view own jobs
+        jobs = await db.getUserJobs(user.id);
+      }
+      
       setSavedJobs(jobs || []);
       
       if (jobs && jobs.length > 0) {
@@ -192,6 +211,29 @@ export default function App() {
     const user = await auth.getCurrentUser();
     if (!user) {
       alert('Please login to save jobs');
+      return;
+    }
+
+    // Check permission to create/edit jobs
+    let canEdit = false;
+    if (currentJobId) {
+      // Editing existing job - check if admin can edit all or user can edit own
+      if (isAdmin && await hasPermission('edit_all_jobs', 'jobs')) {
+        canEdit = true;
+      } else {
+        // Check if user owns this job
+        const job = savedJobs.find(j => j.id === currentJobId);
+        if (job && job.user_id === user.id && await hasPermission('edit_own_jobs', 'jobs')) {
+          canEdit = true;
+        }
+      }
+    } else {
+      // Creating new job
+      canEdit = await hasPermission('create_jobs', 'jobs');
+    }
+    
+    if (!canEdit) {
+      alert('You do not have permission to save jobs. Please contact an administrator.');
       return;
     }
 
@@ -314,6 +356,16 @@ export default function App() {
     if (!confirm('Are you sure you want to delete this job?')) return;
 
     try {
+      // Check permission to delete jobs
+      const canDelete = isAdmin && await hasPermission('delete_all_jobs', 'jobs')
+        ? true
+        : await hasPermission('delete_own_jobs', 'jobs');
+      
+      if (!canDelete) {
+        alert('You do not have permission to delete jobs. Please contact an administrator.');
+        return;
+      }
+
       await db.deleteJob(jobId);
       if (currentJobId === jobId) {
         setCurrentJobId(null);

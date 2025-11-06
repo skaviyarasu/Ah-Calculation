@@ -6,6 +6,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 
 - **`01_battery_optimization_schema.sql`** - Complete database schema (tables, indexes, policies, triggers)
 - **`02_add_serial_number_migration.sql`** - Migration to add serial_number column to existing databases
+- **`03_add_role_based_access_control.sql`** - Migration to add role-based access control (RBAC) system
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -13,7 +14,8 @@ This directory contains all database schema files for the AH Balancer applicatio
 SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to ensure proper execution order:
 - **`01_battery_optimization_schema.sql`** - Initial schema setup (run this first for new databases)
 - **`02_add_serial_number_migration.sql`** - Add serial_number column (run this if you have an existing database)
-- **`03_*`** - Additional migrations (if needed in future)
+- **`03_add_role_based_access_control.sql`** - Add role-based access control system (run this to enable admin/user roles)
+- **`04_*`** - Additional migrations (if needed in future)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
@@ -96,10 +98,12 @@ When making schema changes:
 
 ## 📝 Schema Version
 
-**Current Version:** 2.0.0  
+**Current Version:** 3.0.0  
 **Last Updated:** 2025-01-26  
 **Compatible With:** AH Balancer v1.0+  
-**Changes:** Added serial_number column for job tracking
+**Changes:** 
+- Added serial_number column for job tracking (v2.0.0)
+- Added role-based access control system (v3.0.0)
 
 ## 🔒 Security Notes
 
