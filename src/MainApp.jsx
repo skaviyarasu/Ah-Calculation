@@ -4,17 +4,11 @@ import App from "./App";
 import RowColumnCalculator from "./RowColumnCalculator";
 import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
-import { rbac, auth } from "./lib/supabase";
+import { useRole } from "./hooks/useRole";
 
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState(null);
-
-  useEffect(() => {
-    checkAdminStatus();
-  }, []);
+  const { isAdmin, loading, canViewInventory } = useRole();
 
   // Redirect away from admin view if user is not admin
   useEffect(() => {
@@ -23,36 +17,17 @@ function MainApp() {
     }
   }, [currentView, isAdmin, loading]);
 
-  async function checkAdminStatus() {
-    try {
-      const user = await auth.getCurrentUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        console.log('Checking admin status for user:', user.id);
-        const admin = await rbac.isAdmin(user.id);
-        console.log('Admin status result:', admin);
-        setIsAdmin(admin);
-        
-      } else {
-        console.log('No user found');
-      }
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-    } finally {
-      setLoading(false);
+  // Redirect away from inventory view if user doesn't have permission
+  useEffect(() => {
+    if (currentView === "inventory" && !loading && !canViewInventory) {
+      setCurrentView("ah-balancer");
     }
-  }
-
-  // Refresh admin status (useful after assigning role)
-  async function refreshAdminStatus() {
-    setLoading(true);
-    await checkAdminStatus();
-  }
+  }, [currentView, canViewInventory, loading]);
 
   const navigationItems = [
     { id: "ah-balancer", label: "AH Balancer", description: "Interactive 13SxP Optimizer" },
     { id: "row-column", label: "Row & Column Calculator", description: "Simple grid with row sums" },
-    { id: "inventory", label: "Inventory", description: "Stock Management" },
+    ...(canViewInventory ? [{ id: "inventory", label: "Inventory", description: "Stock Management" }] : []),
     ...(isAdmin ? [{ id: "admin", label: "Admin Panel", description: "Role & Access Management" }] : [])
   ];
 

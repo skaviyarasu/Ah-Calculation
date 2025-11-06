@@ -11,6 +11,8 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`05_add_workflow_status.sql`** - Migration to add workflow status tracking and creator/verifier roles
 - **`06_add_inventory_management.sql`** - Migration to add inventory management system (items, transactions, stock tracking)
 - **`07_add_inventory_images_and_serial.sql`** - Migration to add image_url and serial_number fields for 5S tracking and barcode generation
+- **`08_update_inventory_permissions.sql`** - Update permissions to allow all authenticated users to add inventory items
+- **`09_add_inventory_permissions.sql`** - Add inventory module permissions to RBAC system
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -23,6 +25,8 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`05_add_workflow_status.sql`** - Add workflow status and creator/verifier roles (run this to enable job review workflow)
 - **`06_add_inventory_management.sql`** - Add inventory management system (run this to enable stock tracking and inventory management)
 - **`07_add_inventory_images_and_serial.sql`** - Add image and serial number support (run this to enable 5S tracking with images and barcodes)
+- **`08_update_inventory_permissions.sql`** - Update permissions (run this to allow all authenticated users to add items and transactions)
+- **`09_add_inventory_permissions.sql`** - Add inventory permissions to RBAC (run this to enable role-based inventory access control)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 

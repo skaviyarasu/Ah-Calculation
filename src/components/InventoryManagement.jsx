@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { inventory, auth, rbac } from '../lib/supabase';
+import { useRole } from '../hooks/useRole';
 import Barcode from './Barcode';
 
 export default function InventoryManagement() {
@@ -14,7 +15,9 @@ export default function InventoryManagement() {
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Use useRole hook for permission checks
+  const { isAdmin, canViewInventory, canManageInventory, hasPermission, loading: roleLoading } = useRole();
   const [isCreator, setIsCreator] = useState(false);
 
   // Form states
@@ -56,21 +59,21 @@ export default function InventoryManagement() {
   });
 
   useEffect(() => {
-    checkPermissions();
-    loadData();
-  }, []);
+    checkCreatorRole();
+    if (canViewInventory) {
+      loadData();
+    }
+  }, [canViewInventory]);
 
-  async function checkPermissions() {
+  async function checkCreatorRole() {
     try {
       const user = await auth.getCurrentUser();
       if (user) {
-        const admin = await rbac.isAdmin(user.id);
         const creator = await rbac.isCreator(user.id);
-        setIsAdmin(admin);
         setIsCreator(creator);
       }
     } catch (error) {
-      console.error('Error checking permissions:', error);
+      console.error('Error checking creator role:', error);
     }
   }
 
@@ -93,7 +96,7 @@ export default function InventoryManagement() {
     }
   }
 
-  const canEdit = isAdmin || isCreator;
+  const canEdit = canManageInventory || isAdmin || isCreator;
 
   // Filter items
   const filteredItems = items.filter(item => {
@@ -291,12 +294,30 @@ export default function InventoryManagement() {
     }
   }
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading inventory...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if user has permission to view inventory
+  if (!canViewInventory) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center border border-red-200">
+          <div className="text-red-600 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-gray-600 mb-4">You do not have permission to access the Inventory Management module.</p>
+          <p className="text-sm text-gray-500">Please contact an administrator to grant you inventory access permissions.</p>
         </div>
       </div>
     );
@@ -316,43 +337,45 @@ export default function InventoryManagement() {
               <h1 className="text-3xl font-bold text-gray-800">Inventory Management</h1>
               <p className="text-gray-600 mt-1">Track and manage battery cells and components</p>
             </div>
-            {canEdit && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setEditingItem(null);
-                    setItemForm({
-                      item_code: '',
-                      item_name: '',
-                      description: '',
-                      category: 'battery_cell',
-                      unit: 'pcs',
-                      capacity_mah: '',
-                      voltage: '',
-                      manufacturer: '',
-                      supplier: '',
-                      cost_per_unit: '',
-                      selling_price: '',
-                      min_stock_level: 0,
-                      max_stock_level: '',
-                      location: '',
-                      status: 'active',
-                      notes: ''
-                    });
-                    setShowItemForm(true);
-                  }}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors font-medium"
-                >
-                  + Add Item
-                </button>
-                <button
-                  onClick={() => setShowTransactionForm(true)}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors font-medium"
-                >
-                  + New Transaction
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setEditingItem(null);
+                  setItemForm({
+                    item_code: '',
+                    item_name: '',
+                    description: '',
+                    category: 'battery_cell',
+                    unit: 'pcs',
+                    capacity_mah: '',
+                    voltage: '',
+                    manufacturer: '',
+                    supplier: '',
+                    cost_per_unit: '',
+                    selling_price: '',
+                    min_stock_level: 0,
+                    max_stock_level: '',
+                    location: '',
+                    status: 'active',
+                    notes: '',
+                    image_url: '',
+                    serial_number: ''
+                  });
+                  setImageFile(null);
+                  setImagePreview(null);
+                  setShowItemForm(true);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors font-medium"
+              >
+                + Add Item
+              </button>
+              <button
+                onClick={() => setShowTransactionForm(true)}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors font-medium"
+              >
+                + New Transaction
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}

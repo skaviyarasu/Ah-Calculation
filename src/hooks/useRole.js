@@ -50,12 +50,44 @@ export function useRole() {
     }
   }
 
+  // Inventory-specific permission checks
+  const [canViewInventory, setCanViewInventory] = useState(false);
+  const [canManageInventory, setCanManageInventory] = useState(false);
+
+  useEffect(() => {
+    async function checkInventoryPermissions() {
+      if (!currentUser) {
+        setCanViewInventory(false);
+        setCanManageInventory(false);
+        return;
+      }
+      try {
+        const viewInventory = await rbac.hasPermission(currentUser.id, 'view_inventory', 'inventory');
+        const addInventory = await rbac.hasPermission(currentUser.id, 'add_inventory_items', 'inventory');
+        const editInventory = await rbac.hasPermission(currentUser.id, 'edit_inventory_items', 'inventory');
+        setCanViewInventory(viewInventory);
+        setCanManageInventory(addInventory || editInventory || isAdmin);
+      } catch (error) {
+        console.error('Error checking inventory permissions:', error);
+        setCanViewInventory(false);
+        setCanManageInventory(false);
+      }
+    }
+    
+    if (currentUser && !loading) {
+      checkInventoryPermissions();
+    }
+  }, [currentUser, loading, isAdmin]);
+
   return {
     userRole,
     isAdmin,
     loading,
     currentUser,
+    currentUserId: currentUser?.id || null,
     hasPermission,
+    canViewInventory,
+    canManageInventory,
     refresh: checkRole
   };
 }

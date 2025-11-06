@@ -521,15 +521,63 @@ export default function AdminPanel() {
               <div className="bg-gray-50 rounded-lg p-4">
                 <h2 className="text-xl font-semibold text-gray-800 mb-4">Role Permissions</h2>
                 
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Admin Permissions */}
                   <div>
                     <h3 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                      <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">ADMIN</span>
+                      <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">ADMIN</span>
                       Admin Role
                     </h3>
-                    <ul className="space-y-2 text-sm">
+                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
                       {permissions.filter(p => p.role === 'admin').map((perm) => (
+                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <div className="flex-1">
+                            <span className="font-medium text-gray-800">{perm.permission}</span>
+                            {perm.resource && (
+                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
+                            )}
+                            {perm.description && (
+                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Creator Permissions */}
+                  <div>
+                    <h3 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
+                      <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">CREATOR</span>
+                      Creator Role
+                    </h3>
+                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
+                      {permissions.filter(p => p.role === 'creator').map((perm) => (
+                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
+                          <span className="text-green-600 mt-0.5">✓</span>
+                          <div className="flex-1">
+                            <span className="font-medium text-gray-800">{perm.permission}</span>
+                            {perm.resource && (
+                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
+                            )}
+                            {perm.description && (
+                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Verifier Permissions */}
+                  <div>
+                    <h3 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
+                      <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs">VERIFIER</span>
+                      Verifier Role
+                    </h3>
+                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
+                      {permissions.filter(p => p.role === 'verifier').map((perm) => (
                         <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
                           <span className="text-green-600 mt-0.5">✓</span>
                           <div className="flex-1">
@@ -552,7 +600,7 @@ export default function AdminPanel() {
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">USER</span>
                       Standard User Role
                     </h3>
-                    <ul className="space-y-2 text-sm">
+                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
                       {permissions.filter(p => p.role === 'user').map((perm) => (
                         <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
                           <span className="text-green-600 mt-0.5">✓</span>
