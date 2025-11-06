@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { auth, supabase } from '../lib/supabase';
 
 export default function UserRegistration({ onUserCreated }) {

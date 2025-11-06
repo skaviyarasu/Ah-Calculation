@@ -21,6 +21,11 @@ export default function AdminPanel() {
     loadData();
   }, []);
 
+  // Debug: Log active tab
+  useEffect(() => {
+    console.log('AdminPanel active tab:', activeTab);
+  }, [activeTab]);
+
   async function checkAdminAccess() {
     try {
       const user = await auth.getCurrentUser();
@@ -258,7 +263,7 @@ export default function AdminPanel() {
 
           {/* User Registration Tab */}
           {activeTab === 'register' && (
-            <div className="space-y-6">
+            <div className="space-y-6 mt-6">
               <UserRegistration onUserCreated={loadData} />
             </div>
           )}
