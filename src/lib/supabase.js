@@ -692,5 +692,141 @@ export const inventory = {
       .order('item_name', { ascending: true })
     if (error) throw error
     return data
+  },
+
+  // ============================================
+  // Sales & P&L Functions
+  // ============================================
+
+  // Create sales transaction
+  async createSalesTransaction(salesData) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    // Get item cost method and calculate COGS
+    const { data: item } = await supabase
+      .from('inventory_items')
+      .select('cost_method, average_cost, current_stock')
+      .eq('id', salesData.item_id)
+      .single()
+
+    if (!item) throw new Error('Item not found')
+    if (item.current_stock < salesData.quantity) {
+      throw new Error('Insufficient stock')
+    }
+
+    // Calculate COGS based on cost method
+    let unitCost = 0
+    if (item.cost_method === 'fifo') {
+      const { data: cogs } = await supabase.rpc('get_fifo_cogs', {
+        p_item_id: salesData.item_id,
+        p_quantity: salesData.quantity
+      })
+      unitCost = cogs / salesData.quantity
+    } else if (item.cost_method === 'lifo') {
+      const { data: cogs } = await supabase.rpc('get_lifo_cogs', {
+        p_item_id: salesData.item_id,
+        p_quantity: salesData.quantity
+      })
+      unitCost = cogs / salesData.quantity
+    } else {
+      // Weighted average
+      unitCost = item.average_cost || 0
+    }
+
+    // Allocate cost layers
+    await supabase.rpc('allocate_cost_layers_on_sale', {
+      p_item_id: salesData.item_id,
+      p_quantity: salesData.quantity,
+      p_cost_method: item.cost_method
+    })
+
+    // Create sales transaction
+    const { data, error } = await supabase
+      .from('sales_transactions')
+      .insert([{
+        ...salesData,
+        unit_cost: unitCost,
+        created_by: user.id
+      }])
+      .select()
+      .single()
+
+    if (error) throw error
+
+    // Create inventory transaction for stock reduction
+    await this.createTransaction({
+      item_id: salesData.item_id,
+      transaction_type: 'out',
+      quantity: salesData.quantity,
+      reference_number: salesData.invoice_number || salesData.reference_number,
+      reference_type: 'sale',
+      notes: `Sale: ${salesData.customer_name || 'N/A'}`
+    })
+
+    return data
+  },
+
+  // Get all sales transactions
+  async getAllSalesTransactions(filters = {}) {
+    let query = supabase
+      .from('sales_transactions')
+      .select(`
+        *,
+        inventory_items (
+          id,
+          item_code,
+          item_name,
+          category
+        )
+      `)
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (filters.startDate) {
+      query = query.gte('transaction_date', filters.startDate)
+    }
+    if (filters.endDate) {
+      query = query.lte('transaction_date', filters.endDate)
+    }
+    if (filters.itemId) {
+      query = query.eq('item_id', filters.itemId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  // Get periodic P&L report
+  async getPeriodicPLReport(startDate, endDate) {
+    const { data, error } = await supabase.rpc('get_periodic_pl_report', {
+      p_start_date: startDate,
+      p_end_date: endDate
+    })
+    if (error) throw error
+    return data?.[0] || null
+  },
+
+  // Get P&L by item
+  async getPLByItem(startDate, endDate) {
+    const { data, error } = await supabase.rpc('get_pl_by_item', {
+      p_start_date: startDate,
+      p_end_date: endDate
+    })
+    if (error) throw error
+    return data || []
+  },
+
+  // Update item cost method
+  async updateItemCostMethod(itemId, costMethod) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .update({ cost_method: costMethod })
+      .eq('id', itemId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
   }
 }

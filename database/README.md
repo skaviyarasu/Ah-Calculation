@@ -13,6 +13,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`07_add_inventory_images_and_serial.sql`** - Migration to add image_url and serial_number fields for 5S tracking and barcode generation
 - **`08_update_inventory_permissions.sql`** - Update permissions to allow all authenticated users to add inventory items
 - **`09_add_inventory_permissions.sql`** - Add inventory module permissions to RBAC system
+- **`10_add_cogs_and_pl_system.sql`** - Add COGS (Cost of Goods Sold) tracking and P&L (Profit & Loss) reporting system
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -27,6 +28,7 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`07_add_inventory_images_and_serial.sql`** - Add image and serial number support (run this to enable 5S tracking with images and barcodes)
 - **`08_update_inventory_permissions.sql`** - Update permissions (run this to allow all authenticated users to add items and transactions)
 - **`09_add_inventory_permissions.sql`** - Add inventory permissions to RBAC (run this to enable role-based inventory access control)
+- **`10_add_cogs_and_pl_system.sql`** - Add COGS and P&L system (run this to enable cost tracking, sales transactions, and profit & loss reporting)
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
