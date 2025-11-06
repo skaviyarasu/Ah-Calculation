@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { rbac, auth, supabase } from '../lib/supabase';
+import UserRegistration from './UserRegistration';
 
 export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
@@ -12,7 +13,7 @@ export default function AdminPanel() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [assigningRole, setAssigningRole] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('users'); // 'users' or 'roles'
+  const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', or 'register'
   const [userStats, setUserStats] = useState({ total: 0, admins: 0, regular: 0 });
 
   useEffect(() => {
@@ -83,13 +84,36 @@ export default function AdminPanel() {
   }
 
   async function handleAssignRole(userId, role) {
-    if (!confirm(`Assign role "${role}" to this user?`)) return;
+    // Special validation for admin role assignment
+    if (role === 'admin') {
+      // Count existing admins
+      const adminCount = uniqueUsers.filter(u => u.roles.includes('admin')).length;
+      
+      // Warn about admin privileges
+      const adminWarning = `⚠️ WARNING: Admin Role Assignment\n\n` +
+        `Admin users have full system access including:\n` +
+        `- View and edit all user data\n` +
+        `- Manage all user roles\n` +
+        `- Bypass all workflow restrictions\n` +
+        `- Delete any job\n\n` +
+        `Current admin count: ${adminCount}\n\n` +
+        `Admin access should be limited to trusted personnel only.\n\n` +
+        `Are you absolutely sure you want to assign admin role to this user?`;
+      
+      if (!confirm(adminWarning)) return;
+      
+      // Double confirmation for admin
+      if (!confirm('This is a FINAL confirmation. Assign admin role?')) return;
+    } else {
+      // Standard confirmation for other roles
+      if (!confirm(`Assign role "${role}" to this user?`)) return;
+    }
 
     setAssigningRole(true);
     try {
       const user = await auth.getCurrentUser();
       await rbac.assignRole(userId, role, user.id);
-      alert('Role assigned successfully!');
+      alert(`Role "${role}" assigned successfully!`);
       await loadData();
     } catch (error) {
       console.error('Error assigning role:', error);
@@ -211,6 +235,16 @@ export default function AdminPanel() {
               User Management
             </button>
             <button
+              onClick={() => setActiveTab('register')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'register'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Register User
+            </button>
+            <button
               onClick={() => setActiveTab('roles')}
               className={`px-4 py-2 font-medium transition-colors ${
                 activeTab === 'roles'
@@ -221,6 +255,13 @@ export default function AdminPanel() {
               Role Permissions
             </button>
           </div>
+
+          {/* User Registration Tab */}
+          {activeTab === 'register' && (
+            <div className="space-y-6">
+              <UserRegistration onUserCreated={loadData} />
+            </div>
+          )}
 
           {/* User Management Tab */}
           {activeTab === 'users' && (
@@ -285,12 +326,14 @@ export default function AdminPanel() {
                                     key={role}
                                     className={`px-3 py-1 rounded-full text-xs font-medium ${
                                       role === 'admin'
-                                        ? 'bg-red-100 text-red-800 border border-red-200'
+                                        ? 'bg-red-100 text-red-800 border-2 border-red-300 font-bold'
                                         : role === 'creator'
                                         ? 'bg-purple-100 text-purple-800 border border-purple-200'
                                         : role === 'verifier'
                                         ? 'bg-orange-100 text-orange-800 border border-orange-200'
-                                        : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                        : role === 'user'
+                                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                        : 'bg-gray-100 text-gray-800 border border-gray-200'
                                     }`}
                                   >
                                     {role.toUpperCase()}
@@ -298,44 +341,98 @@ export default function AdminPanel() {
                                 ))
                               ) : (
                                 <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                                  NO ROLES
+                                  NO ROLES (Standard User)
                                 </span>
                               )}
                             </div>
+                            {user.roles.length > 1 && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Combined roles: {user.roles.join(' + ')}
+                              </p>
+                            )}
                           </div>
-                          <div className="flex flex-wrap gap-2 ml-4">
-                            <button
-                              onClick={() => handleAssignRole(user.id, 'admin')}
-                              disabled={user.roles.includes('admin') || assigningRole}
-                              className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                              title="Assign Admin Role"
-                            >
-                              Make Admin
-                            </button>
-                            <button
-                              onClick={() => handleRemoveRole(user.id, 'admin')}
-                              disabled={!user.roles.includes('admin') || assigningRole}
-                              className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                              title="Remove Admin Role"
-                            >
-                              Remove Admin
-                            </button>
-                            <button
-                              onClick={() => handleAssignRole(user.id, 'creator')}
-                              disabled={user.roles.includes('creator') || assigningRole}
-                              className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                              title="Assign Creator Role"
-                            >
-                              Make Creator
-                            </button>
-                            <button
-                              onClick={() => handleAssignRole(user.id, 'verifier')}
-                              disabled={user.roles.includes('verifier') || assigningRole}
-                              className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                              title="Assign Verifier Role"
-                            >
-                              Make Verifier
-                            </button>
+                          <div className="flex flex-col gap-2 ml-4">
+                            <div className="flex flex-wrap gap-2">
+                              {/* Admin Role - Restricted */}
+                              <button
+                                onClick={() => handleAssignRole(user.id, 'admin')}
+                                disabled={user.roles.includes('admin') || assigningRole}
+                                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-semibold border-2 border-red-800"
+                                title="⚠️ RESTRICTED: Admin role grants full system access"
+                              >
+                                ⚠️ Make Admin
+                              </button>
+                              <button
+                                onClick={() => handleRemoveRole(user.id, 'admin')}
+                                disabled={!user.roles.includes('admin') || assigningRole}
+                                className="px-3 py-1.5 text-xs bg-red-700 text-white rounded-md hover:bg-red-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                title="Remove Admin Role"
+                              >
+                                Remove Admin
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {/* Standard Roles - Can be combined */}
+                              <button
+                                onClick={() => handleAssignRole(user.id, 'creator')}
+                                disabled={user.roles.includes('creator') || assigningRole}
+                                className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                title="Assign Creator Role (can create and edit jobs)"
+                              >
+                                {user.roles.includes('creator') ? '✓ Creator' : 'Make Creator'}
+                              </button>
+                              <button
+                                onClick={() => handleAssignRole(user.id, 'verifier')}
+                                disabled={user.roles.includes('verifier') || assigningRole}
+                                className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                title="Assign Verifier Role (can review and approve jobs)"
+                              >
+                                {user.roles.includes('verifier') ? '✓ Verifier' : 'Make Verifier'}
+                              </button>
+                              <button
+                                onClick={() => handleAssignRole(user.id, 'user')}
+                                disabled={user.roles.includes('user') || assigningRole}
+                                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                title="Assign Standard User Role"
+                              >
+                                {user.roles.includes('user') ? '✓ User' : 'Make User'}
+                              </button>
+                            </div>
+                            {/* Remove role buttons */}
+                            {(user.roles.includes('creator') || user.roles.includes('verifier') || user.roles.includes('user')) && (
+                              <div className="flex flex-wrap gap-2 mt-1 pt-1 border-t border-gray-200">
+                                {user.roles.includes('creator') && (
+                                  <button
+                                    onClick={() => handleRemoveRole(user.id, 'creator')}
+                                    disabled={assigningRole}
+                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
+                                    title="Remove Creator Role"
+                                  >
+                                    Remove Creator
+                                  </button>
+                                )}
+                                {user.roles.includes('verifier') && (
+                                  <button
+                                    onClick={() => handleRemoveRole(user.id, 'verifier')}
+                                    disabled={assigningRole}
+                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
+                                    title="Remove Verifier Role"
+                                  >
+                                    Remove Verifier
+                                  </button>
+                                )}
+                                {user.roles.includes('user') && (
+                                  <button
+                                    onClick={() => handleRemoveRole(user.id, 'user')}
+                                    disabled={assigningRole}
+                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
+                                    title="Remove User Role"
+                                  >
+                                    Remove User
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -360,35 +457,50 @@ export default function AdminPanel() {
                       className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
                     />
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'admin')}
-                      disabled={!selectedUser || assigningRole}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {assigningRole ? 'Assigning...' : 'Assign Admin Role'}
-                    </button>
-                    <button
-                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'creator')}
-                      disabled={!selectedUser || assigningRole}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {assigningRole ? 'Assigning...' : 'Assign Creator Role'}
-                    </button>
-                    <button
-                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'verifier')}
-                      disabled={!selectedUser || assigningRole}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {assigningRole ? 'Assigning...' : 'Assign Verifier Role'}
-                    </button>
-                    <button
-                      onClick={() => selectedUser && handleAssignRole(selectedUser, 'user')}
-                      disabled={!selectedUser || assigningRole}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      {assigningRole ? 'Assigning...' : 'Assign User Role'}
-                    </button>
+                  <div className="space-y-2">
+                    <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
+                      <p className="text-xs text-red-800 font-medium mb-1">⚠️ Admin Role Restrictions:</p>
+                      <p className="text-xs text-red-700">
+                        Admin access is restricted. Only assign to trusted personnel. Double confirmation required.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => selectedUser && handleAssignRole(selectedUser, 'admin')}
+                        disabled={!selectedUser || assigningRole}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold border-2 border-red-800"
+                        title="⚠️ RESTRICTED: Admin role grants full system access"
+                      >
+                        {assigningRole ? 'Assigning...' : '⚠️ Assign Admin Role'}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <p className="text-xs text-gray-600 w-full mb-1">Standard Roles (can be combined):</p>
+                      <button
+                        onClick={() => selectedUser && handleAssignRole(selectedUser, 'creator')}
+                        disabled={!selectedUser || assigningRole}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {assigningRole ? 'Assigning...' : 'Assign Creator Role'}
+                      </button>
+                      <button
+                        onClick={() => selectedUser && handleAssignRole(selectedUser, 'verifier')}
+                        disabled={!selectedUser || assigningRole}
+                        className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {assigningRole ? 'Assigning...' : 'Assign Verifier Role'}
+                      </button>
+                      <button
+                        onClick={() => selectedUser && handleAssignRole(selectedUser, 'user')}
+                        disabled={!selectedUser || assigningRole}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        {assigningRole ? 'Assigning...' : 'Assign Standard User Role'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      💡 Tip: Users can have multiple roles (e.g., Creator + Verifier). Admin role is restricted and should be limited.
+                    </p>
                   </div>
                   <p className="text-xs text-gray-600">
                     💡 Tip: Find user ID from Supabase Dashboard → Authentication → Users
@@ -458,17 +570,32 @@ export default function AdminPanel() {
           )}
 
           {/* Statistics */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t">
             <div className="text-center bg-gray-50 rounded-lg p-4">
               <div className="text-3xl font-bold text-gray-800">{userStats.total}</div>
               <div className="text-sm text-gray-600 mt-1">Total Users</div>
             </div>
-            <div className="text-center bg-red-50 rounded-lg p-4">
+            <div className="text-center bg-red-50 rounded-lg p-4 border-2 border-red-200">
               <div className="text-3xl font-bold text-red-600">{userStats.admins}</div>
-              <div className="text-sm text-gray-600 mt-1">Administrators</div>
+              <div className="text-sm text-gray-600 mt-1">Admins</div>
+              <div className="text-xs text-red-600 mt-1 font-medium">⚠️ Restricted</div>
+            </div>
+            <div className="text-center bg-purple-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-purple-600">
+                {uniqueUsers.filter(u => u.roles.includes('creator')).length}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Creators</div>
+            </div>
+            <div className="text-center bg-orange-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-orange-600">
+                {uniqueUsers.filter(u => u.roles.includes('verifier')).length}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">Verifiers</div>
             </div>
             <div className="text-center bg-blue-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-600">{userStats.regular}</div>
+              <div className="text-3xl font-bold text-blue-600">
+                {uniqueUsers.filter(u => u.roles.includes('user') || u.roles.length === 0).length}
+              </div>
               <div className="text-sm text-gray-600 mt-1">Standard Users</div>
             </div>
           </div>
