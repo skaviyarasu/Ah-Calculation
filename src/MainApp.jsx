@@ -15,6 +15,13 @@ function MainApp() {
     checkAdminStatus();
   }, []);
 
+  // Redirect away from admin view if user is not admin
+  useEffect(() => {
+    if (currentView === "admin" && !loading && !isAdmin) {
+      setCurrentView("ah-balancer");
+    }
+  }, [currentView, isAdmin, loading]);
+
   async function checkAdminStatus() {
     try {
       const user = await auth.getCurrentUser();
@@ -25,13 +32,6 @@ function MainApp() {
         console.log('Admin status result:', admin);
         setIsAdmin(admin);
         
-        if (!admin) {
-          console.log('User is not an admin. To become admin:');
-          console.log('1. Go to Supabase Dashboard → Authentication → Users');
-          console.log('2. Copy your User ID');
-          console.log('3. Run this SQL in Supabase SQL Editor:');
-          console.log(`   INSERT INTO user_roles (user_id, role) VALUES ('${user.id}', 'admin');`);
-        }
       } else {
         console.log('No user found');
       }
@@ -89,52 +89,11 @@ function MainApp() {
                   </button>
                 ))}
               </div>
-              {!isAdmin && currentUserId && (
-                <button
-                  onClick={refreshAdminStatus}
-                  className="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md transition-colors"
-                  title="Refresh admin status"
-                >
-                  🔄
-                </button>
-              )}
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Admin Access Helper (only show if not admin) */}
-      {!isAdmin && currentUserId && currentView !== "admin" && (
-        <div className="max-w-7xl mx-auto px-4 mt-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm">
-            <div className="flex items-start gap-3">
-              <div className="text-yellow-600 mt-0.5">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-yellow-800 mb-1">Admin Panel Not Available</p>
-                <p className="text-yellow-700 mb-2">
-                  To access the Admin Panel, you need to be assigned the admin role. 
-                </p>
-                <details className="text-xs text-yellow-700">
-                  <summary className="cursor-pointer font-medium mb-1">How to get admin access</summary>
-                  <ol className="list-decimal list-inside space-y-1 mt-2 pl-2">
-                    <li>Go to Supabase Dashboard → Authentication → Users</li>
-                    <li>Find your account and copy the User ID (UUID)</li>
-                    <li>Go to SQL Editor and run:</li>
-                  </ol>
-                  <div className="bg-yellow-100 p-2 rounded mt-2 font-mono text-xs overflow-x-auto">
-                    INSERT INTO user_roles (user_id, role) VALUES ('{currentUserId}', 'admin');
-                  </div>
-                  <p className="mt-2 text-xs">After running the SQL, click the refresh button (🔄) above to reload your permissions.</p>
-                </details>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Content Area */}
       <motion.div
@@ -146,7 +105,12 @@ function MainApp() {
       >
         {currentView === "ah-balancer" && <App />}
         {currentView === "row-column" && <RowColumnCalculator />}
-        {currentView === "admin" && isAdmin && <AdminPanel />}
+        {currentView === "admin" && isAdmin ? (
+          <AdminPanel />
+        ) : currentView === "admin" && !isAdmin ? (
+          // Redirect to AH Balancer if trying to access admin without permission
+          <App />
+        ) : null}
       </motion.div>
     </div>
   );
