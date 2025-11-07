@@ -1140,7 +1140,7 @@ export const inventory = {
   async getPurchaseOrders(filters = {}) {
     let query = supabase
       .from('purchase_orders')
-      .select(`*, supplier_id, inventory_locations!purchase_orders_location_id_fkey (id, name, branch_id)`)
+      .select('*')
       .order('created_at', { ascending: false })
 
     if (filters.branch_id) {
@@ -1158,7 +1158,7 @@ export const inventory = {
   async getPurchaseOrderById(id) {
     const { data, error } = await supabase
       .from('purchase_orders')
-      .select(`*, supplier_id, inventory_locations!purchase_orders_location_id_fkey(id, name, branch_id), purchase_order_items (id, item_id, quantity, unit_price, received_quantity, inventory_items (item_code, item_name, unit))`)
+      .select(`*, purchase_order_items (id, item_id, quantity, unit_price, received_quantity, inventory_items (item_code, item_name, unit))`)
       .eq('id', id)
       .single()
     if (error) throw error
@@ -1178,7 +1178,7 @@ export const inventory = {
   async getGoodsReceipts(filters = {}) {
     let query = supabase
       .from('goods_receipts')
-      .select(`*, purchase_order_id, inventory_locations!goods_receipts_location_id_fkey (id, name, branch_id)`)
+      .select('*')
       .order('created_at', { ascending: false })
 
     if (filters.branch_id) {
