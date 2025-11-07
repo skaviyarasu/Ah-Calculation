@@ -668,6 +668,45 @@ export default function App() {
 
   const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
 
+  const statusLabelMap = {
+    draft: "Draft",
+    pending_review: "Pending Review",
+    needs_modification: "Needs Modification",
+    approved: "Approved",
+    rejected: "Rejected"
+  };
+
+  const statusClassMap = {
+    draft: "metric-chip bg-muted text-muted-foreground",
+    pending_review: "status-chip-warning",
+    needs_modification: "status-chip-warning",
+    approved: "status-chip-success",
+    rejected: "status-chip-danger"
+  };
+
+  const statusChip = currentJobId
+    ? (
+        <span className={`${statusClassMap[currentJobStatus] ?? "metric-chip bg-muted text-muted-foreground"}`}>
+          {statusLabelMap[currentJobStatus] ?? "Draft"}
+        </span>
+      )
+    : (
+        <span className="metric-chip bg-muted text-muted-foreground">New Draft</span>
+      );
+
+  const baseInputClass = "w-full rounded-xl border border-white/40 bg-white/70 px-4 py-2.5 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-transparent";
+  const disabledInputClass = "pointer-events-none opacity-60";
+  const cellInputClass = "w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2 text-sm shadow-sm transition focus:outline-none focus:ring-1 focus:ring-accent/30";
+  const disabledCellClass = "pointer-events-none opacity-60";
+  const buttonClasses = {
+    primary: "rounded-full bg-accent text-accent-foreground px-5 py-2.5 text-sm font-semibold shadow-layer-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/40",
+    secondary: "rounded-full border border-white/40 bg-white/70 px-5 py-2.5 text-sm font-medium text-muted-foreground shadow-sm transition hover:border-accent/40 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/20",
+    subtle: "rounded-full bg-muted px-5 py-2.5 text-sm font-medium text-muted-foreground transition hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/10",
+    danger: "rounded-full bg-danger text-danger-foreground px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-danger/80 focus:outline-none focus:ring-2 focus:ring-danger/40",
+    warning: "rounded-full bg-warning text-warning-foreground px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-warning/75 focus:outline-none focus:ring-2 focus:ring-warning/40"
+  };
+  const disabledButtonClass = "disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none";
+
   // Filter saved jobs based on search query (industry-standard multi-field search)
   const filteredJobs = useMemo(() => {
     if (!searchQuery.trim()) return savedJobs;
@@ -899,573 +938,580 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
+    <div className="space-y-10">
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-lg shadow-lg p-6 space-y-6"
-        >
-          <h1 className="text-3xl font-bold text-gray-800 mb-6 text-center">
-            AH Balancer — Interactive Optimizer
-          </h1>
-          
-          {/* Job Information Section */}
-          <div className="mb-6 bg-blue-50 p-4 rounded-lg">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-4">
-                <h2 className="text-xl font-semibold text-blue-800">Job Information</h2>
-                {currentJobId && (
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    currentJobStatus === 'draft' ? 'bg-gray-200 text-gray-700' :
-                    currentJobStatus === 'pending_review' ? 'bg-yellow-200 text-yellow-800' :
-                    currentJobStatus === 'needs_modification' ? 'bg-orange-200 text-orange-800' :
-                    currentJobStatus === 'approved' ? 'bg-green-200 text-green-800' :
-                    currentJobStatus === 'rejected' ? 'bg-red-200 text-red-800' :
-                    'bg-gray-200 text-gray-700'
-                  }`}>
-                    {currentJobStatus === 'draft' ? 'Draft' :
-                     currentJobStatus === 'pending_review' ? 'Pending Review' :
-                     currentJobStatus === 'needs_modification' ? 'Needs Modification' :
-                     currentJobStatus === 'approved' ? 'Approved' :
-                     currentJobStatus === 'rejected' ? 'Rejected' : 'Draft'}
-                  </span>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={newJob}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                >
-                  New Job
-                </button>
-                <button
-                  onClick={saveJob}
-                  disabled={saving || !isEditable}
-                  className={`px-4 py-2 rounded-md transition-colors text-sm ${
-                    saving || !isEditable
-                      ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  }`}
-                  title={!isEditable && currentJobId ? 'Job is not in editable status. Only draft or needs_modification jobs can be edited.' : ''}
-                >
-                  {saving ? 'Saving...' : currentJobId ? 'Update Job' : 'Save Job'}
-                </button>
-                {/* Submit for Review button (Creator only) */}
-                {isCreator && currentJobId && (currentJobStatus === 'draft' || currentJobStatus === 'needs_modification') && (
-                  <button
-                    onClick={submitForReview}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                  >
-                    Submit for Review
-                  </button>
-                )}
-              </div>
+        transition={{ duration: 0.3 }}
+        className="panel relative overflow-hidden px-6 py-8 space-y-8"
+      >
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-layer-gradient opacity-80" />
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Job Card</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-fluid-xl font-semibold">AH Balancer · Interactive Optimizer</h2>
+              {statusChip}
+              {serialNumber && currentJobId && (
+                <span className="metric-chip font-mono text-xs uppercase text-muted-foreground">
+                  SN · {serialNumber}
+                </span>
+              )}
             </div>
-            
-            {/* Verification Notes Display */}
-            {verificationNotes && (
-              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <p className="text-sm font-medium text-yellow-800 mb-1">Verification Notes:</p>
-                <p className="text-sm text-yellow-700">{verificationNotes}</p>
-              </div>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Manage manual AH and voltage readings with review workflow, instant analytics, and database persistence.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={newJob} className={`${buttonClasses.secondary} ${disabledButtonClass}`}>
+              New Job
+            </button>
+            <button
+              onClick={saveJob}
+              disabled={saving || (!isEditable && currentJobId)}
+              className={`${buttonClasses.primary} ${disabledButtonClass}`}
+              title={!isEditable && currentJobId ? "Job is not in editable status. Only draft or needs modification jobs can be edited." : ""}
+            >
+              {saving ? "Saving…" : currentJobId ? "Update Job" : "Save Job"}
+            </button>
+            {isCreator && currentJobId && (currentJobStatus === "draft" || currentJobStatus === "needs_modification") && (
+              <button
+                onClick={submitForReview}
+                className={`${buttonClasses.warning} ${disabledButtonClass}`}
+              >
+                Submit for Review
+              </button>
             )}
+          </div>
+        </div>
 
-            {/* Verifier Actions */}
-            {isVerifier && currentJobId && currentJobStatus === 'pending_review' && (
-              <div className="mb-4 p-4 bg-white border border-gray-300 rounded-md">
-                <p className="text-sm font-medium text-gray-700 mb-2">Review & Verification</p>
-                <textarea
-                  value={verificationNotesInput}
-                  onChange={(e) => setVerificationNotesInput(e.target.value)}
-                  placeholder="Enter verification notes..."
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-2"
-                  rows={3}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => verifyJob('approved')}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => verifyJob('rejected')}
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={requestModification}
-                    className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                    disabled={!verificationNotesInput.trim()}
-                  >
-                    Request Modification
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {!isEditable && currentJobId && (
-              <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded-md">
-                <p className="text-sm text-gray-700">
-                  <span className="font-medium">Note:</span> This job is not editable in its current status. 
-                  {currentJobStatus === 'pending_review' && ' It is awaiting verification.'}
-                  {currentJobStatus === 'approved' && ' It has been approved.'}
-                  {currentJobStatus === 'rejected' && ' It has been rejected.'}
-                  {currentJobStatus === 'needs_modification' && isCreator && ' You can now edit and resubmit.'}
-                </p>
-              </div>
-            )}
-            <div className="grid md:grid-cols-2 gap-4 items-end">
+        {verificationNotes && (
+          <div className="rounded-2xl border border-warning/40 bg-warning/30 px-4 py-3 text-sm text-warning-foreground shadow-sm">
+            <p className="font-medium">Verification Notes</p>
+            <p className="mt-1 text-xs leading-relaxed text-warning-foreground/80">{verificationNotes}</p>
+          </div>
+        )}
+
+        {isVerifier && currentJobId && currentJobStatus === "pending_review" && (
+          <div className="glass-panel px-5 py-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground">Review &amp; Verification</p>
+              <span className="text-xs uppercase tracking-wider text-muted-foreground">Creator will be notified</span>
+            </div>
+            <textarea
+              value={verificationNotesInput}
+              onChange={(event) => setVerificationNotesInput(event.target.value)}
+              placeholder="Enter verification notes..."
+              className={`${baseInputClass} min-h-[100px] resize-y`}
+              rows={3}
+            />
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => verifyJob('approved')} className={`${buttonClasses.primary} ${disabledButtonClass}`}>
+                Approve
+              </button>
+              <button onClick={() => verifyJob('rejected')} className={`${buttonClasses.danger} ${disabledButtonClass}`}>
+                Reject
+              </button>
+              <button
+                onClick={requestModification}
+                className={`${buttonClasses.warning} ${disabledButtonClass}`}
+                disabled={!verificationNotesInput.trim()}
+              >
+                Request Modification
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!isEditable && currentJobId && (
+          <div className="rounded-2xl border border-muted/30 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Read-only</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              This job cannot be edited in the current status.
+              {currentJobStatus === 'pending_review' && ' It is awaiting verification.'}
+              {currentJobStatus === 'approved' && ' It has been approved.'}
+              {currentJobStatus === 'rejected' && ' It has been rejected.'}
+              {currentJobStatus === 'needs_modification' && isCreator && ' Apply the requested changes, then resubmit.'}
+            </p>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              Serial Number <span className="text-xs text-gray-500 font-normal">(Tracking ID)</span>
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Serial Number <span className="font-normal text-muted-foreground/70">(Tracking ID)</span>
                 </label>
-                <input
+            <input
               type="text"
               value={serialNumber}
-              onChange={(e) => setSerialNumber(e.target.value.toUpperCase())}
+              onChange={(event) => setSerialNumber(event.target.value.toUpperCase())}
               disabled={!isEditable && currentJobId}
-              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm ${
-                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50'
-              }`}
+              className={`${baseInputClass} font-mono ${!isEditable && currentJobId ? disabledInputClass : ""}`}
               placeholder="AH-YYYYMMDD-XXXX"
               title={currentJobId ? "Edit serial number for tracking" : "Auto-generated on save"}
             />
             {!currentJobId && (
-              <p className="text-xs text-gray-500">Will be auto-generated when you save</p>
+              <p className="text-[11px] text-muted-foreground/70">Auto-generated when you save.</p>
             )}
-              </div>
+          </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Customer Name</label>
-                <input
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Customer Name</label>
+            <input
               type="text"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={(event) => setCustomerName(event.target.value)}
               disabled={!isEditable && currentJobId}
-              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
+              className={`${baseInputClass} ${!isEditable && currentJobId ? disabledInputClass : ""}`}
               placeholder="Enter customer name"
-                />
-              </div>
+            />
+          </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Job Card #</label>
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Job Card #</label>
             <input
               type="text"
               value={jobCard}
-              onChange={(e) => setJobCard(e.target.value)}
+              onChange={(event) => setJobCard(event.target.value)}
               disabled={!isEditable && currentJobId}
-              className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
-              }`}
+              className={`${baseInputClass} ${!isEditable && currentJobId ? disabledInputClass : ""}`}
               placeholder="Enter job card number"
             />
-            </div>
+          </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Date</label>
-                <input
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Date</label>
+            <input
               type="date"
               value={jobDate}
-              onChange={(e) => setJobDate(e.target.value)}
+              onChange={(event) => setJobDate(event.target.value)}
               disabled={!isEditable && currentJobId}
-                  className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
-                  }`}
-                />
-              </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Battery Specification</label>
-                <input
+              className={`${baseInputClass} ${!isEditable && currentJobId ? disabledInputClass : ""}`}
+            />
+          </div>
+          <div className="md:col-span-2 xl:col-span-1 space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Battery Specification</label>
+            <input
               type="text"
               value={batterySpec}
-              onChange={(e) => setBatterySpec(e.target.value)}
+              onChange={(event) => setBatterySpec(event.target.value)}
               disabled={!isEditable && currentJobId}
-                  className={`w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                    !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
-                  }`}
+              className={`${baseInputClass} ${!isEditable && currentJobId ? disabledInputClass : ""}`}
               placeholder="e.g., 48V 100Ah LiFePO4"
+            />
+          </div>
+        </div>
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.05 }}
+        className="panel px-6 py-6 space-y-6"
+      >
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Series (S)</label>
+                <input
+                  type="number"
+              min={1}
+              value={S}
+              onChange={(event) => setS(Number(event.target.value) || 1)}
+              className={baseInputClass}
                 />
               </div>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-4 items-end">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Series (S)</label>
-            <input type="number" min={1} value={S} onChange={(e) => setS(Number(e.target.value) || 1)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-          </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Parallel (P)</label>
-            <input type="number" min={1} value={P} onChange={(e) => setP(Number(e.target.value) || 1)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Tolerance (mAh)</label>
-            <input type="number" min={0} value={tolerance} onChange={(e) => setTolerance(Number(e.target.value) || 0)} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-3 p-4 bg-white border rounded-lg">
-              <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Manual Entry Workflow</h3>
-              <p className="text-sm text-gray-600">
-                Enter amp-hour and voltage values directly in the grid below. Each cell now captures both measurements—no file import is required.
-              </p>
-              <ul className="list-disc ml-5 text-xs text-gray-500 space-y-1">
-                <li>Type AH in the first field and Voltage in the second field for every parallel slot.</li>
-                <li>Voltage accepts decimal values (comma or dot). Leave blank if a reading isn&apos;t available.</li>
-                <li>Use the export buttons to capture snapshots once the matrix is complete.</li>
-              </ul>
-              <div>
-              <button
-                  onClick={randomize}
-                  className="mt-3 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-              >
-                  Generate Demo Data
-              </button>
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Parallel (P)</label>
+                <input
+                  type="number"
+              min={1}
+              value={P}
+              onChange={(event) => setP(Number(event.target.value) || 1)}
+              className={baseInputClass}
+                />
               </div>
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Tolerance (mAh)</label>
+            <input
+              type="number"
+              min={0}
+              value={tolerance}
+              onChange={(event) => setTolerance(Number(event.target.value) || 0)}
+              className={baseInputClass}
+            />
             </div>
-            <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
-          <div className="text-sm">AH Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
-          <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
-          <div className="text-xs text-gray-600">
-            Avg V (Max row): <b>{isFiniteNumber(averageVoltages[rMax]) ? averageVoltages[rMax].toFixed(3) : "—"}</b>&nbsp;|&nbsp;
-            Avg V (Min row): <b>{isFiniteNumber(averageVoltages[rMin]) ? averageVoltages[rMin].toFixed(3) : "—"}</b>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="metric-chip w-full items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">AH Spread</span>
+            <span className="text-base font-semibold text-foreground">{Number.isFinite(spread) ? Math.round(spread) : "—"} mAh</span>
           </div>
-          <div className="text-sm">
-            Max cell voltage: <b>{isFiniteNumber(cellVoltageExtremes.max.value) ? cellVoltageExtremes.max.value.toFixed(3) : "—"} V</b>
-            {cellVoltageExtremes.max.series !== null && (
-              <span> (S{cellVoltageExtremes.max.series + 1}P{(cellVoltageExtremes.max.parallel ?? 0) + 1})</span>
-            )}
+          <div className="metric-chip w-full items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Row Extremes</span>
+            <span className="text-base font-semibold text-foreground">Max S{rMax + 1} · Min S{rMin + 1}</span>
           </div>
-          <div className="text-sm">
-            Min cell voltage: <b>{isFiniteNumber(cellVoltageExtremes.min.value) ? cellVoltageExtremes.min.value.toFixed(3) : "—"} V</b>
-            {cellVoltageExtremes.min.series !== null && (
-              <span> (S{cellVoltageExtremes.min.series + 1}P{(cellVoltageExtremes.min.parallel ?? 0) + 1})</span>
-            )}
-          </div>
-          <div className="text-sm space-x-2">
-            <span>
-              Avg V (Max row): <b>{isFiniteNumber(rowVoltageExtremes.max.value) ? rowVoltageExtremes.max.value.toFixed(3) : "—"} V</b>
-              {rowVoltageExtremes.max.series !== null && (
-                <span> (S{rowVoltageExtremes.max.series + 1})</span>
-              )}
-            </span>
-            <span className="text-slate-400">|</span>
-            <span>
-              Avg V (Min row): <b>{isFiniteNumber(rowVoltageExtremes.min.value) ? rowVoltageExtremes.min.value.toFixed(3) : "—"} V</b>
-              {rowVoltageExtremes.min.series !== null && (
-                <span> (S{rowVoltageExtremes.min.series + 1})</span>
-              )}
+          <div className="metric-chip w-full items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Avg V (Max | Min)</span>
+            <span className="text-base font-semibold text-foreground">
+              {isFiniteNumber(averageVoltages[rMax]) ? averageVoltages[rMax].toFixed(3) : "—"}
+              <span className="text-muted-foreground/70"> | </span>
+              {isFiniteNumber(averageVoltages[rMin]) ? averageVoltages[rMin].toFixed(3) : "—"}
             </span>
           </div>
-          <div className="text-sm">
-            Voltage difference: <b>{
-              isFiniteNumber(rowVoltageExtremes.max.value) && isFiniteNumber(rowVoltageExtremes.min.value)
+          <div className="metric-chip w-full items-center justify-between">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Voltage Difference</span>
+            <span className="text-base font-semibold text-foreground">
+              {isFiniteNumber(rowVoltageExtremes.max.value) && isFiniteNumber(rowVoltageExtremes.min.value)
                 ? (rowVoltageExtremes.max.value - rowVoltageExtremes.min.value).toFixed(3)
-                : "—"
-            } V</b>
+                : "—"} V
+            </span>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="metric-chip w-full flex-col items-start gap-1 text-left">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Max Cell Voltage</span>
+            <span className="text-base font-semibold text-foreground">
+              {isFiniteNumber(cellVoltageExtremes.max.value) ? cellVoltageExtremes.max.value.toFixed(3) : "—"} V
+            </span>
+            {cellVoltageExtremes.max.series !== null && (
+              <span className="text-xs text-muted-foreground">S{cellVoltageExtremes.max.series + 1} · P{(cellVoltageExtremes.max.parallel ?? 0) + 1}</span>
+            )}
+          </div>
+          <div className="metric-chip w-full flex-col items-start gap-1 text-left">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">Min Cell Voltage</span>
+            <span className="text-base font-semibold text-foreground">
+              {isFiniteNumber(cellVoltageExtremes.min.value) ? cellVoltageExtremes.min.value.toFixed(3) : "—"} V
+            </span>
+            {cellVoltageExtremes.min.series !== null && (
+              <span className="text-xs text-muted-foreground">S{cellVoltageExtremes.min.series + 1} · P{(cellVoltageExtremes.min.parallel ?? 0) + 1}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="glass-panel px-5 py-5 space-y-3">
           {suggestion ? (
-            <div className="text-sm">
-              Suggested swap: <b>S{suggestion.rMax + 1}:P{suggestion.cFromMax + 1}</b> ↔ <b>S{suggestion.rMin + 1}:P{suggestion.cFromMin + 1}</b>
-              <div>Improvement: <b>{Math.round(suggestion.improvement)}</b> mAh | After spread: <b>{Math.round(suggestion.afterSpread)}</b> mAh</div>
-              <div className="flex gap-2 mt-2">
-                <button onClick={applySuggestedSwap} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors">Apply Suggested Swap</button>
-                <button onClick={iterateToTolerance} className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md transition-colors">Iterate to Tolerance</button>
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-foreground">Suggested swap available</p>
+                <span className="text-xs uppercase tracking-widest text-muted-foreground">Improvement ready</span>
               </div>
+              <p className="text-sm text-muted-foreground">
+                Swap <span className="font-semibold text-foreground">S{suggestion.rMax + 1}:P{suggestion.cFromMax + 1}</span> with <span className="font-semibold text-foreground">S{suggestion.rMin + 1}:P{suggestion.cFromMin + 1}</span> to reduce spread.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <span>Improvement: <b>{Math.round(suggestion.improvement)} mAh</b></span>
+                <span>After Spread: <b>{Math.round(suggestion.afterSpread)} mAh</b></span>
               </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={applySuggestedSwap} className={`${buttonClasses.primary} ${disabledButtonClass}`}>
+                  Apply Suggested Swap
+              </button>
+                <button onClick={iterateToTolerance} className={`${buttonClasses.warning} ${disabledButtonClass}`}>
+                  Iterate to Tolerance
+                </button>
+              </div>
+            </>
           ) : (
-            <div className="text-sm text-gray-500">Enter data to see a suggestion.</div>
+            <div className="text-sm text-muted-foreground">Enter more readings to generate swap recommendations and spread optimisation.</div>
           )}
         </div>
-      </div>
 
-          {/* Search and Retrieve Section */}
-          <div className="mb-6 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-              {/* Search Input */}
-              <div id="search-container" className="flex-1 relative">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Search Saved Jobs
-                </label>
-                <div className="relative">
-                  <svg 
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setShowSearchResults(true);
-                    }}
-                    onFocus={() => setShowSearchResults(true)}
-                    placeholder="Search by Job Card, Customer Name, Date, or ID..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  {searchQuery && (
-              <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        setShowSearchResults(false);
-                      }}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-              </button>
-                  )}
+        <div className="rounded-2xl border border-white/30 bg-white/60 px-4 py-4 text-sm text-muted-foreground shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p>Enter AH and voltage values directly in the matrix. Each cell captures both measurements—no file import required.</p>
+            <button onClick={randomize} className={`${buttonClasses.secondary} ${disabledButtonClass}`}>
+              Generate Demo Data
+            </button>
           </div>
+        </div>
+      </motion.section>
 
-                {/* Search Results Dropdown */}
-                {showSearchResults && searchQuery.trim() && filteredJobs.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.1 }}
+        className="panel px-6 py-6 space-y-6"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div id="search-container" className="flex-1 space-y-2">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Search Saved Jobs</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/60">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => setShowSearchResults(true)}
+                placeholder="Search by job card, customer name, date, or ID..."
+                className={`${baseInputClass} pl-11`}
+              />
+              {searchQuery && (
+              <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setShowSearchResults(false);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/70 hover:text-foreground"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+              </button>
+              )}
+            </div>
+
+            {showSearchResults && searchQuery.trim() && (
+              <div className="absolute z-50 mt-2 w-full max-w-[calc(100%-3rem)] rounded-2xl border border-white/30 bg-white/95 shadow-layer-md backdrop-blur-md">
+                {filteredJobs.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    No jobs found matching "{searchQuery}".
+                  </div>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto py-2">
                     {filteredJobs.map((job) => (
-                      <div
+              <button
                         key={job.id}
                         onClick={() => {
                           loadJob(job.id);
                           setSearchQuery("");
                           setShowSearchResults(false);
                         }}
-                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                        className="flex w-full flex-col gap-1 px-4 py-3 text-left transition hover:bg-muted/50"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="font-medium text-gray-900">
-                              {job.serial_number && (
-                                <span className="font-mono text-blue-600 mr-2 font-semibold">{job.serial_number}</span>
-                              )}
-                              {job.job_card || job.customer_name || 'Unnamed Job'}
-                              {currentJobId === job.id && (
-                                <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Current</span>
-                              )}
-              </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {job.customer_name && job.job_card && `${job.customer_name} • `}
-                              {job.job_date && `Date: ${new Date(job.job_date).toLocaleDateString()} • `}
-                              {job.serial_number ? `SN: ${job.serial_number}` : `ID: ${job.id.substring(0, 8)}...`}
-              </div>
-              </div>
-                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-              </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {showSearchResults && searchQuery.trim() && filteredJobs.length === 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-4 text-center text-gray-500">
-                    No jobs found matching "{searchQuery}"
-                  </div>
-                )}
-              </div>
-
-              {/* Retrieve Button */}
-              <div className="flex flex-col gap-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0">Actions</label>
-              <button
-                  onClick={loadSavedJobs}
-                  disabled={loading}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-sm font-medium whitespace-nowrap ${
-                    loading
-                      ? 'bg-gray-400 text-white cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`}
-                  title="Retrieve all saved jobs from database"
-                >
-                  <svg 
-                    className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} 
-                    fill="none" 
-                    stroke="currentColor" 
-                    viewBox="0 0 24 24"
-                  >
-                    <path 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                      strokeWidth={2} 
-                      d={loading 
-                        ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                        : "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                      }
-                    />
-                  </svg>
-                  {loading ? 'Retrieving...' : 'Refresh List'}
+                        <span className="text-sm font-medium text-foreground">
+                          {job.serial_number && <span className="font-mono text-accent/80 mr-2">{job.serial_number}</span>}
+                          {job.job_card || job.customer_name || 'Unnamed Job'}
+                          {currentJobId === job.id && <span className="ml-2 text-xs text-accent">Current</span>}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {job.customer_name && `${job.customer_name} · `}
+                          {job.job_date && `Date ${new Date(job.job_date).toLocaleDateString()} · `}
+                          {job.serial_number || job.id.substring(0, 8)}
+                        </span>
               </button>
-            </div>
-          </div>
-
-            {/* Search Summary */}
-            {searchQuery.trim() && (
-              <div className="mt-3 text-sm text-gray-600">
-                Found {filteredJobs.length} of {savedJobs.length} saved {savedJobs.length === 1 ? 'job' : 'jobs'}
-              </div>
-            )}
-            
-            {/* Quick Access Dropdown (fallback) */}
-            {!searchQuery.trim() && savedJobs.length > 0 && (
-              <div className="mt-4 flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">Quick Load:</label>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      loadJob(e.target.value);
-                      e.target.value = '';
-                    }
-                  }}
-                  className="flex-1 border rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  defaultValue=""
-                >
-                  <option value="">Select a job to load...</option>
-                  {savedJobs.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.serial_number ? `[${job.serial_number}] ` : ''}{job.job_card || job.customer_name || 'Unnamed Job'} - {new Date(job.created_at).toLocaleDateString()}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* Export Buttons */}
-          <div className="mb-4 flex items-center justify-end gap-2">
-            <button onClick={copyTableTSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table TSV</button>
-            <button onClick={copyTableCSV} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Copy Table CSV</button>
-            <button onClick={exportCSV} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table CSV</button>
-            <button onClick={exportXLSX} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm">Export Table Excel</button>
-          </div>
-
-          <div className="overflow-auto border rounded-2xl">
-            <table ref={tableRef} className="min-w-full text-sm">
-                <thead>
-                  <tr>
-                    <th className="px-3 py-2 text-left sticky left-0 bg-white z-10">Series\\Parallel</th>
-                    {Array.from({ length: P }).map((_, j) => (
-                      <th key={j} className="px-3 py-2">P{j + 1}</th>
                     ))}
-                    <th className="px-3 py-2">Total AH</th>
-                    <th className="px-3 py-2">Avg V</th>
-                    <th className="px-3 py-2">Total V</th>
+            </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className="text-xs uppercase tracking-wide text-transparent">Actions</span>
+            <button
+              onClick={loadSavedJobs}
+              disabled={loading}
+              className={`${buttonClasses.secondary} ${disabledButtonClass}`}
+              title="Retrieve all saved jobs from the database"
+            >
+              <span className="flex items-center gap-2">
+                <svg className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d={loading ? "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" : "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4-4 4m0 0-4-4m4 4V4"}
+                  />
+                </svg>
+                {loading ? "Retrieving…" : "Refresh List"}
+              </span>
+            </button>
+              </div>
+              </div>
+
+        {searchQuery.trim() && (
+          <div className="text-sm text-muted-foreground">
+            Found {filteredJobs.length} of {savedJobs.length} saved {savedJobs.length === 1 ? "job" : "jobs"}.
+              </div>
+        )}
+
+        {!searchQuery.trim() && savedJobs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs uppercase tracking-wide text-muted-foreground">Quick Load</label>
+            <select
+              onChange={(event) => {
+                if (event.target.value) {
+                  loadJob(event.target.value);
+                  event.target.value = "";
+                }
+              }}
+              className={`${baseInputClass} max-w-xs`}
+              defaultValue=""
+            >
+              <option value="">Select a job…</option>
+              {savedJobs.map((job) => (
+                <option key={job.id} value={job.id}>
+                  {job.serial_number ? `[${job.serial_number}] ` : ""}
+                  {job.job_card || job.customer_name || 'Unnamed Job'} — {new Date(job.created_at).toLocaleDateString()}
+                </option>
+              ))}
+            </select>
+              </div>
+        )}
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.15 }}
+        className="panel px-6 py-6 space-y-6"
+      >
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button onClick={copyTableTSV} className={`${buttonClasses.secondary} ${disabledButtonClass}`}>
+            Copy Table TSV
+          </button>
+          <button onClick={copyTableCSV} className={`${buttonClasses.secondary} ${disabledButtonClass}`}>
+            Copy Table CSV
+          </button>
+          <button onClick={exportCSV} className={`${buttonClasses.secondary} ${disabledButtonClass}`}>
+            Export Table CSV
+          </button>
+          <button onClick={exportXLSX} className={`${buttonClasses.primary} ${disabledButtonClass}`}>
+            Export Table Excel
+          </button>
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-white/15 bg-white/60 shadow-layer-sm backdrop-blur-md">
+          <table ref={tableRef} className="w-full text-sm">
+            <thead className="bg-white/70 text-xs uppercase tracking-widest text-muted-foreground">
+              <tr>
+                <th className="sticky left-0 z-10 px-4 py-3 text-left font-semibold text-muted-foreground">Series\\Parallel</th>
+                {Array.from({ length: P }).map((_, j) => (
+                  <th key={j} className="px-4 py-3 text-left font-semibold">P{j + 1}</th>
+                ))}
+                <th className="px-4 py-3 text-left font-semibold">Total AH</th>
+                <th className="px-4 py-3 text-left font-semibold">Avg V</th>
+                <th className="px-4 py-3 text-left font-semibold">Total V</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {grid.map((row, i) => {
-                    const isMax = i === rMax;
-                    const isMin = i === rMin;
-                    return (
-                      <tr key={i} className={`${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
-                        <td className="px-3 py-2 font-medium sticky left-0 bg-white z-10">S{i + 1}</td>
-                      {row.map((cell, j) => {
-                        const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
-                        const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
-                        const baseClass = "px-3 py-1 border rounded-xl w-24";
-                        const highlightClass = `${highlightSwapFrom ? " ring-2 ring-yellow-400" : ""}${highlightSwapTo ? " ring-2 ring-blue-400" : ""}`;
-                        const disabledClass = !isEditable && currentJobId ? ' bg-gray-100 cursor-not-allowed' : '';
-                        return (
-                          <td key={j} className="px-2 py-2 align-top">
-                            <div className="text-[10px] text-gray-500 mb-1">AH</div>
+            <tbody className="divide-y divide-white/20">
+              {grid.map((row, i) => {
+                const isMax = i === rMax;
+                const isMin = i === rMin;
+                const rowBackgroundClass = isMax
+                  ? "bg-danger/15"
+                  : isMin
+                  ? "bg-success/15"
+                  : "bg-white/70";
+                return (
+                  <tr key={i} className={`${rowBackgroundClass} backdrop-blur-sm transition`}> 
+                    <td className="sticky left-0 z-10 px-4 py-3 font-medium text-foreground/80">S{i + 1}</td>
+                    {row.map((cell, j) => {
+                      const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
+                      const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
+                      const highlightClass = highlightSwapFrom
+                        ? "ring-2 ring-warning/60"
+                        : highlightSwapTo
+                        ? "ring-2 ring-accent/60"
+                        : "";
+                      return (
+                        <td key={j} className="px-3 py-3 align-top">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">AH</div>
                         <input
-                              className={`${baseClass}${highlightClass}${disabledClass}`}
+                            className={`${cellInputClass} ${highlightClass} ${!isEditable && currentJobId ? disabledCellClass : ""}`}
                           type="number"
-                              step="1"
-                              value={isFiniteNumber(cell?.ah) ? cell.ah : ""}
-                              onChange={(e) => handleCellChange(i, j, "ah", e.target.value)}
-                              inputMode="numeric"
-                              disabled={!isEditable && currentJobId}
-                              title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
-                            />
-                            <div className="text-[10px] text-gray-500 mt-2 mb-1">V</div>
+                            step="1"
+                            value={isFiniteNumber(cell?.ah) ? cell.ah : ""}
+                            onChange={(event) => handleCellChange(i, j, "ah", event.target.value)}
+                            inputMode="numeric"
+                            disabled={!isEditable && currentJobId}
+                            title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
+                          />
+                          <div className="mt-3 text-[10px] uppercase tracking-wide text-muted-foreground/70">V</div>
                         <input
-                              className={`${baseClass}${highlightClass}${disabledClass}`}
+                            className={`${cellInputClass} ${highlightClass} ${!isEditable && currentJobId ? disabledCellClass : ""}`}
                           type="number"
-                              step="any"
-                              value={isFiniteNumber(cell?.v) ? cell.v : ""}
-                              onChange={(e) => handleCellChange(i, j, "v", e.target.value)}
-                              inputMode="decimal"
-                              disabled={!isEditable && currentJobId}
-                              title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
+                            step="any"
+                            value={isFiniteNumber(cell?.v) ? cell.v : ""}
+                            onChange={(event) => handleCellChange(i, j, "v", event.target.value)}
+                            inputMode="decimal"
+                            disabled={!isEditable && currentJobId}
+                            title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
                         />
                       </td>
-                        );
-                      })}
-                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(totalsAH[i]) ? Math.round(totalsAH[i]) : "—"}</td>
-                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(averageVoltages[i]) ? averageVoltages[i].toFixed(3) : "—"}</td>
-                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(totalsVoltage[i]) ? totalsVoltage[i].toFixed(3) : "—"}</td>
+                      );
+                    })}
+                    <td className="px-4 py-3 font-semibold text-foreground/80">{isFiniteNumber(totalsAH[i]) ? Math.round(totalsAH[i]) : "—"}</td>
+                    <td className="px-4 py-3 font-semibold text-foreground/80">{isFiniteNumber(averageVoltages[i]) ? averageVoltages[i].toFixed(3) : "—"}</td>
+                    <td className="px-4 py-3 font-semibold text-foreground/80">{isFiniteNumber(totalsVoltage[i]) ? totalsVoltage[i].toFixed(3) : "—"}</td>
                     </tr>
-                  );
-                })}
+                );
+              })}
                 </tbody>
               </table>
-          </div>
+        </div>
+      </motion.section>
 
-          {/* Saved Jobs List */}
-          {savedJobs.length > 0 && (
-            <div className="mt-6 bg-gray-50 border rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Your Saved Jobs</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {savedJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className={`flex items-center justify-between p-3 bg-white border rounded-lg ${
-                      currentJobId === job.id ? 'border-blue-500 bg-blue-50' : ''
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">
-                        {job.serial_number && (
-                          <span className="font-mono text-blue-600 font-semibold mr-2">{job.serial_number}</span>
-                        )}
-                        {job.job_card || job.customer_name || 'Unnamed Job'}
-                        {currentJobId === job.id && <span className="ml-2 text-blue-600 text-sm">(Current)</span>}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {job.customer_name && job.job_card && `${job.customer_name} • `}
-                        {job.battery_spec && `${job.battery_spec} • `}
-                        {job.series_count}S×{job.parallel_count}P • {new Date(job.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => loadJob(job.id)}
-                        disabled={loading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md transition-colors text-sm"
-                      >
-                        {loading ? 'Loading...' : 'Load'}
-                      </button>
-                      <button
-                        onClick={() => deleteJob(job.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md transition-colors text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.2 }}
+        className="panel px-6 py-6 space-y-6"
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-foreground">Saved Jobs</h3>
+          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">{savedJobs.length} total</span>
+        </div>
+
+        {savedJobs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-muted/40 bg-muted/15 px-4 py-6 text-center text-sm text-muted-foreground">
+            No saved jobs yet. Save your first job to see it listed here.
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+            {savedJobs.map((job) => (
+              <div
+                key={job.id}
+                className={`glass-panel flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${currentJobId === job.id ? "ring-1 ring-accent/40 bg-accent/10" : ""}`}
+              >
+                <div className="flex-1 space-y-1 text-left">
+                  <div className="text-sm font-medium text-foreground">
+                    {job.serial_number && <span className="font-mono text-accent mr-2">{job.serial_number}</span>}
+                    {job.job_card || job.customer_name || 'Unnamed Job'}
+                    {currentJobId === job.id && <span className="ml-2 text-xs text-accent">(Current)</span>}
                   </div>
-                ))}
+                  <div className="text-xs text-muted-foreground">
+                    {job.customer_name && `${job.customer_name} · `}
+                    {job.battery_spec && `${job.battery_spec} · `}
+                    {job.series_count}S×{job.parallel_count}P · {new Date(job.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => loadJob(job.id)}
+                    disabled={loading}
+                    className={`${buttonClasses.primary} ${disabledButtonClass}`}
+                  >
+                    {loading ? 'Loading…' : 'Load'}
+                  </button>
+                  <button
+                    onClick={() => deleteJob(job.id)}
+                    className={`${buttonClasses.danger} ${disabledButtonClass}`}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-
-          <div className="text-xs text-gray-500">
-            Tips:
-            <ul className="list-disc ml-5 space-y-1 mt-1">
-              <li>Enter AH and Voltage for every cell manually; leave blank when you don’t have a reading.</li>
-              <li>Yellow ring = cell to <b>swap out</b> from the current <b>max</b> row; Blue ring = cell to <b>swap in</b> to the current <b>min</b> row.</li>
-              <li>Click <b>Apply Suggested Swap</b> to mutate the grid; re-run until spread ≤ tolerance using <b>Iterate to Tolerance</b>.</li>
-              <li>Fill in job information and click <b>Save Job</b> to store your calculations in the database.</li>
-            </ul>
+            ))}
           </div>
-        </motion.div>
+        )}
+
+        <div className="rounded-2xl border border-muted/30 bg-muted/20 px-4 py-4 text-xs leading-relaxed text-muted-foreground">
+          <p className="font-semibold text-muted-foreground">Tips for best results</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Enter AH and voltage for every cell manually; leave blank when a reading isn't available.</li>
+            <li>Yellow ring highlights the cell to remove from the current maximum row; blue ring marks the destination in the minimum row.</li>
+            <li>Use <b>Apply Suggested Swap</b> or run <b>Iterate to Tolerance</b> until spread is within your threshold.</li>
+            <li>Keep metadata current and click <b>Save Job</b> to persist the calculation to Supabase.</li>
+          </ul>
       </div>
+      </motion.section>
     </div>
   );
 }

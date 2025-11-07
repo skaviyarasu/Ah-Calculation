@@ -3,6 +3,127 @@
 @tailwind utilities;
 
 
+@layer base {
+  :root {
+    --background: #f6f8fb;
+    --foreground: #0f172a;
+
+    --muted: rgba(100, 116, 139, 0.12);
+    --muted-foreground: #475569;
+
+    --card: rgba(255, 255, 255, 0.75);
+    --card-foreground: #0f172a;
+
+    --accent: #14532d;
+    --accent-foreground: #f8fafc;
+
+    --border: rgba(148, 163, 184, 0.3);
+    --ring: rgba(20, 83, 45, 0.35);
+
+    --success: rgba(34, 197, 94, 0.15);
+    --success-foreground: #047857;
+
+    --warning: rgba(250, 204, 21, 0.18);
+    --warning-foreground: #b45309;
+
+    --danger: rgba(248, 113, 113, 0.16);
+    --danger-foreground: #b91c1c;
+  }
+
+  .dark {
+    --background: #0b1220;
+    --foreground: #e2e8f0;
+
+    --muted: rgba(30, 41, 59, 0.65);
+    --muted-foreground: #cbd5f5;
+
+    --card: rgba(15, 23, 42, 0.75);
+    --card-foreground: #e2e8f0;
+
+    --accent: #22c55e;
+    --accent-foreground: #052e16;
+
+    --border: rgba(79, 90, 109, 0.45);
+    --ring: rgba(34, 197, 94, 0.3);
+
+    --success: rgba(34, 197, 94, 0.18);
+    --success-foreground: #bbf7d0;
+
+    --warning: rgba(250, 204, 21, 0.22);
+    --warning-foreground: #fef3c7;
+
+    --danger: rgba(248, 113, 113, 0.22);
+    --danger-foreground: #fecaca;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+    background-image: radial-gradient(circle at 25% 25%, rgba(20, 83, 45, 0.06) 0, rgba(20, 83, 45, 0) 55%),
+      radial-gradient(circle at 75% 10%, rgba(12, 74, 110, 0.05) 0, rgba(12, 74, 110, 0) 60%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display text-foreground font-medium tracking-tight;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl bg-card shadow-layer-sm backdrop-blur-md border border-white/10;
+  }
+
+  .panel-muted {
+    @apply rounded-2xl bg-white/60 shadow-layer-sm backdrop-blur-md border border-white/30;
+  }
+
+  .glass-panel {
+    @apply bg-card/90 backdrop-blur-md border border-white/20 shadow-layer-md rounded-2xl;
+  }
+
+  .metric-chip {
+    @apply inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1.5 text-sm font-medium text-foreground shadow-layer-sm backdrop-blur-md;
+  }
+
+  .status-chip-success {
+    @apply metric-chip bg-success text-success-foreground;
+  }
+
+  .status-chip-warning {
+    @apply metric-chip bg-warning text-warning-foreground;
+  }
+
+  .status-chip-danger {
+    @apply metric-chip bg-danger text-danger-foreground;
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(110deg, rgba(148, 163, 184, 0.25) 8%, rgba(226, 232, 240, 0.55) 18%, rgba(148, 163, 184, 0.25) 33%);
+    background-size: 200% 100%;
+    animation: skeleton-wave 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-wave {
+  0% {
+    background-position-x: 180%
+  }
+  100% {
+    background-position-x: -20%
+  }
+}
+
+
 /* Small utility tweaks */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
