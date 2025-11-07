@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { rbac, auth } from '../lib/supabase';
+import { rbac, auth, organization } from '../lib/supabase';
 import UserRegistration from './UserRegistration';
 import {
   PERMISSION_MATRIX,
@@ -34,6 +34,20 @@ export default function AdminPanel() {
   const [newRoleDescription, setNewRoleDescription] = useState('');
   const [assignRoleSelection, setAssignRoleSelection] = useState('user');
   const [usersLoading, setUsersLoading] = useState(false);
+  const [organizationsList, setOrganizationsList] = useState([]);
+  const [branchesList, setBranchesList] = useState([]);
+  const [orgsLoading, setOrgsLoading] = useState(false);
+  const [createOrgLoading, setCreateOrgLoading] = useState(false);
+  const [createBranchLoading, setCreateBranchLoading] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
+  const [newOrgCode, setNewOrgCode] = useState('');
+  const [newOrgDescription, setNewOrgDescription] = useState('');
+  const [newBranchOrgId, setNewBranchOrgId] = useState('');
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchCode, setNewBranchCode] = useState('');
+  const [assignBranchSelection, setAssignBranchSelection] = useState('');
+  const [assignBranchPrimary, setAssignBranchPrimary] = useState(false);
+  const [branchAssignmentBusy, setBranchAssignmentBusy] = useState(false);
 
   const DEFAULT_ROLES = useMemo(() => ['admin', 'accountant', 'creator', 'verifier', 'user'], []);
 
@@ -128,6 +142,26 @@ export default function AdminPanel() {
     } finally {
       setUsersLoading(false);
       restoreScrollPosition(previousScroll);
+    }
+  };
+
+  const loadOrganizationsAndBranches = async () => {
+    setOrgsLoading(true);
+    try {
+      const [orgs, branches] = await Promise.all([
+        organization.getOrganizations(),
+        organization.getBranches()
+      ]);
+      setOrganizationsList(orgs);
+      setBranchesList(branches);
+      if (!newBranchOrgId && orgs.length > 0) {
+        setNewBranchOrgId(orgs[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading organizations/branches:', error);
+      alert('Failed to load organizations or branches: ' + (error.message || 'Unknown error'));
+    } finally {
+      setOrgsLoading(false);
     }
   };
 
@@ -305,7 +339,7 @@ export default function AdminPanel() {
   }
 
   async function loadData() {
-    await Promise.all([refreshUsersData(), refreshRolePermissions()]);
+    await Promise.all([refreshUsersData(), refreshRolePermissions(), loadOrganizationsAndBranches()]);
   }
 
   async function handleAssignRole(userId, role) {
@@ -393,6 +427,122 @@ export default function AdminPanel() {
       alert('Failed to create role: ' + (error.message || 'Unknown error'));
     } finally {
       setCreatingRole(false);
+    }
+  };
+
+  const handleCreateOrganization = async (event) => {
+    event.preventDefault();
+    if (!newOrgName.trim()) {
+      alert('Organization name is required.');
+      return;
+    }
+
+    setCreateOrgLoading(true);
+    try {
+      await organization.createOrganization({
+        name: newOrgName.trim(),
+        code: newOrgCode.trim() || null,
+        description: newOrgDescription.trim() || null
+      });
+      setNewOrgName('');
+      setNewOrgCode('');
+      setNewOrgDescription('');
+      await loadOrganizationsAndBranches();
+      alert('Organization created successfully.');
+    } catch (error) {
+      console.error('Error creating organization:', error);
+      alert('Failed to create organization: ' + (error.message || 'Unknown error'));
+    } finally {
+      setCreateOrgLoading(false);
+    }
+  };
+
+  const handleCreateBranch = async (event) => {
+    event.preventDefault();
+    if (!newBranchOrgId) {
+      alert('Please select an organization for the branch.');
+      return;
+    }
+    if (!newBranchName.trim()) {
+      alert('Branch name is required.');
+      return;
+    }
+
+    setCreateBranchLoading(true);
+    try {
+      await organization.createBranch({
+        organization_id: newBranchOrgId,
+        name: newBranchName.trim(),
+        code: newBranchCode.trim() || null
+      });
+      setNewBranchName('');
+      setNewBranchCode('');
+      await loadOrganizationsAndBranches();
+      alert('Branch created successfully.');
+    } catch (error) {
+      console.error('Error creating branch:', error);
+      alert('Failed to create branch: ' + (error.message || 'Unknown error'));
+    } finally {
+      setCreateBranchLoading(false);
+    }
+  };
+
+  const handleAssignBranchToUser = async (userId) => {
+    if (!assignBranchSelection) {
+      alert('Select a branch to assign.');
+      return;
+    }
+
+    setBranchAssignmentBusy(true);
+    try {
+      const currentUser = await auth.getCurrentUser();
+      await organization.assignUserToBranch(userId, assignBranchSelection, {
+        is_primary: assignBranchPrimary,
+        assignedBy: currentUser?.id || null
+      });
+
+      if (assignBranchPrimary) {
+        await organization.setPrimaryBranch(userId, assignBranchSelection);
+      }
+
+      await refreshUsersData();
+      setAssignBranchSelection('');
+      setAssignBranchPrimary(false);
+      alert('Branch assignment updated.');
+    } catch (error) {
+      console.error('Error assigning branch:', error);
+      alert('Failed to assign branch: ' + (error.message || 'Unknown error'));
+    } finally {
+      setBranchAssignmentBusy(false);
+    }
+  };
+
+  const handleRemoveBranchAssignment = async (mapId) => {
+    if (!confirm('Remove this branch from the user?')) return;
+    setBranchAssignmentBusy(true);
+    try {
+      await organization.removeUserBranch(mapId);
+      await refreshUsersData();
+      alert('Branch removed from user.');
+    } catch (error) {
+      console.error('Error removing branch:', error);
+      alert('Failed to remove branch: ' + (error.message || 'Unknown error'));
+    } finally {
+      setBranchAssignmentBusy(false);
+    }
+  };
+
+  const handleSetPrimaryBranch = async (userId, branchId) => {
+    setBranchAssignmentBusy(true);
+    try {
+      await organization.setPrimaryBranch(userId, branchId);
+      await refreshUsersData();
+      alert('Primary branch updated.');
+    } catch (error) {
+      console.error('Error setting primary branch:', error);
+      alert('Failed to update primary branch: ' + (error.message || 'Unknown error'));
+    } finally {
+      setBranchAssignmentBusy(false);
     }
   };
 
@@ -520,12 +670,184 @@ export default function AdminPanel() {
             >
               Role Permissions
             </button>
+            <button
+              onClick={() => setActiveTab('structures')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'structures'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Org & Branches
+            </button>
           </div>
 
           {/* User Registration Tab */}
           {activeTab === 'register' && (
             <div className="space-y-6 mt-6">
               <UserRegistration onUserCreated={loadData} />
+            </div>
+          )}
+
+          {/* Organization & Branches Tab */}
+          {activeTab === 'structures' && (
+            <div className="space-y-6 mt-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">Organizations</h2>
+                      <p className="text-sm text-gray-500">Manage companies or franchises operating within Duriyam.</p>
+                    </div>
+                    {orgsLoading && (
+                      <span className="text-xs text-gray-400 animate-pulse">Refreshing…</span>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleCreateOrganization} className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Organization Name *</label>
+                      <input
+                        value={newOrgName}
+                        onChange={(e) => setNewOrgName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        placeholder="Duriyam Energy Pvt Ltd"
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
+                        <input
+                          value={newOrgCode}
+                          onChange={(e) => setNewOrgCode(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          placeholder="HQ"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                        <input
+                          value={newOrgDescription}
+                          onChange={(e) => setNewOrgDescription(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          placeholder="Head office / master franchise"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={createOrgLoading}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {createOrgLoading ? 'Creating…' : 'Add Organization'}
+                    </button>
+                  </form>
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Existing Organizations</h3>
+                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {organizationsList.length === 0 && (
+                        <li className="text-sm text-gray-500">No organizations yet. Create one above.</li>
+                      )}
+                      {organizationsList.map((org) => (
+                        <li key={org.id} className="p-3 border border-gray-200 rounded-md flex justify-between items-center">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{org.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {org.code || 'No code'} • Created {formatDate(org.created_at) || 'recently'}
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${org.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                            {org.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">Branches</h2>
+                      <p className="text-sm text-gray-500">Add outlets, service centers, or warehouses under each organization.</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleCreateBranch} className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Organization *</label>
+                      <select
+                        value={newBranchOrgId}
+                        onChange={(e) => setNewBranchOrgId(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        required
+                      >
+                        {organizationsList.length === 0 && <option value="">Create an organization first</option>}
+                        {organizationsList.map((org) => (
+                          <option key={org.id} value={org.id}>
+                            {org.name}
+                            {org.code ? ` • ${org.code}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Branch Name *</label>
+                        <input
+                          value={newBranchName}
+                          onChange={(e) => setNewBranchName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          placeholder="Chennai Service Hub"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
+                        <input
+                          value={newBranchCode}
+                          onChange={(e) => setNewBranchCode(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          placeholder="CHN"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={createBranchLoading || organizationsList.length === 0}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {createBranchLoading ? 'Creating…' : 'Add Branch'}
+                    </button>
+                  </form>
+
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Branches</h3>
+                    <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {branchesList.length === 0 && (
+                        <li className="text-sm text-gray-500">No branches yet.</li>
+                      )}
+                      {branchesList.map((branch) => (
+                        <li key={branch.id} className="p-3 border border-gray-200 rounded-md">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{branch.name}</div>
+                              <div className="text-xs text-gray-500">
+                                {branch.code || 'No code'} • {branch.organizations?.name || 'Unknown org'}
+                              </div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${branch.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
+                              {branch.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -668,7 +990,16 @@ export default function AdminPanel() {
 
                             <div className="md:col-span-3 flex md:justify-end">
                               <button
-                                onClick={() => setExpandedUserId(prev => (prev === user.id ? null : user.id))}
+                                onClick={() => {
+                                  setExpandedUserId(prev => {
+                                    const next = prev === user.id ? null : user.id;
+                                    if (next === user.id) {
+                                      setAssignBranchSelection('');
+                                      setAssignBranchPrimary(false);
+                                    }
+                                    return next;
+                                  });
+                                }}
                                 className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                               >
                                 <span className="hidden sm:inline">Manage</span>
@@ -733,6 +1064,87 @@ export default function AdminPanel() {
                                   </div>
                                 </div>
                               )}
+
+                              <div className="pt-3 border-t border-blue-100 space-y-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Branch Assignments</span>
+                                  {branchAssignmentBusy && <span className="text-[11px] text-blue-500 animate-pulse">Updating…</span>}
+                                </div>
+                                {user.branches?.length ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {user.branches.map((branch) => (
+                                      <div
+                                        key={branch.id}
+                                        className="bg-white border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-900 shadow-sm flex flex-col gap-1"
+                                      >
+                                        <div className="font-semibold">
+                                          {branch.branch_name || 'Unnamed Branch'}
+                                          {branch.branch_code ? ` • ${branch.branch_code}` : ''}
+                                        </div>
+                                        <div className="text-[11px] text-blue-500">
+                                          {branch.organization_name || 'No organization'}
+                                        </div>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => handleSetPrimaryBranch(user.id, branch.branch_id)}
+                                            disabled={branchAssignmentBusy || branch.is_primary}
+                                            className={`px-2 py-0.5 rounded-md border text-[11px] transition-colors ${
+                                              branch.is_primary
+                                                ? 'bg-green-100 border-green-200 text-green-700 cursor-default'
+                                                : 'border-blue-200 text-blue-600 hover:bg-blue-100'
+                                            }`}
+                                          >
+                                            {branch.is_primary ? 'Primary' : 'Set Primary'}
+                                          </button>
+                                          <button
+                                            onClick={() => handleRemoveBranchAssignment(branch.id)}
+                                            disabled={branchAssignmentBusy}
+                                            className="px-2 py-0.5 rounded-md border border-red-200 text-red-600 hover:bg-red-100 text-[11px]"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-blue-600">No branches assigned yet.</p>
+                                )}
+
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <div className="flex-1">
+                                    <select
+                                      value={assignBranchSelection}
+                                      onChange={(e) => setAssignBranchSelection(e.target.value)}
+                                      className="w-full px-3 py-2 border border-blue-200 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                    >
+                                      <option value="">Select branch…</option>
+                                      {branchesList.map((branch) => (
+                                        <option key={`assign-branch-${branch.id}`} value={branch.id}>
+                                          {branch.name}
+                                          {branch.organizations?.name ? ` • ${branch.organizations.name}` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <label className="inline-flex items-center gap-2 text-xs text-blue-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={assignBranchPrimary}
+                                      onChange={(e) => setAssignBranchPrimary(e.target.checked)}
+                                      className="rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    Mark as primary
+                                  </label>
+                                  <button
+                                    onClick={() => handleAssignBranchToUser(user.id)}
+                                    disabled={branchAssignmentBusy || !assignBranchSelection}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                  >
+                                    Assign Branch
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>

@@ -1,17 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { inventory, auth, rbac } from '../lib/supabase';
 import { useRole } from '../hooks/useRole';
+import { useBranch } from '../hooks/useBranch';
 import Barcode from './Barcode';
 
 export default function InventoryManagement() {
   const [items, setItems] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [branchStock, setBranchStock] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [goodsReceipts, setGoodsReceipts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('items'); // items, transactions, low-stock
   const [showItemForm, setShowItemForm] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [showLocationForm, setShowLocationForm] = useState(false);
+  const [showPurchaseOrderForm, setShowPurchaseOrderForm] = useState(false);
+  const [showGoodsReceiptForm, setShowGoodsReceiptForm] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
@@ -19,6 +29,10 @@ export default function InventoryManagement() {
   // Use useRole hook for permission checks
   const { isAdmin, canViewInventory, canManageInventory, hasPermission, loading: roleLoading } = useRole();
   const [isCreator, setIsCreator] = useState(false);
+  const {
+    currentBranch,
+    loading: branchLoading
+  } = useBranch();
 
   // Form states
   const [itemForm, setItemForm] = useState({
@@ -56,15 +70,72 @@ export default function InventoryManagement() {
     unit_price: '',
     reference_number: '',
     reference_type: '',
+    notes: '',
+    location_id: '',
+    target_location_id: ''
+  });
+
+  const [supplierForm, setSupplierForm] = useState({
+    name: '',
+    code: '',
+    contact_name: '',
+    email: '',
+    phone: '',
+    tax_number: '',
     notes: ''
   });
 
+  const [locationForm, setLocationForm] = useState({
+    name: '',
+    code: '',
+    description: '',
+    is_default: false
+  });
+
+  const today = new Date().toISOString().split('T')[0];
+  const [purchaseOrderForm, setPurchaseOrderForm] = useState({
+    supplier_id: '',
+    location_id: '',
+    expected_date: today,
+    reference_number: '',
+    notes: ''
+  });
+  const [purchaseOrderItems, setPurchaseOrderItems] = useState([
+    { item_id: '', quantity: '', unit_price: '' }
+  ]);
+
+  const [goodsReceiptForm, setGoodsReceiptForm] = useState({
+    purchase_order_id: '',
+    location_id: '',
+    received_date: today,
+    reference_number: '',
+    notes: ''
+  });
+  const [goodsReceiptItems, setGoodsReceiptItems] = useState([
+    { item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }
+  ]);
+  const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState(null);
+
   useEffect(() => {
     checkCreatorRole();
-    if (canViewInventory) {
-      loadData();
+  }, []);
+
+  useEffect(() => {
+    if (canViewInventory && currentBranch) {
+      loadData(currentBranch.id);
     }
-  }, [canViewInventory]);
+  }, [canViewInventory, currentBranch]);
+
+  useEffect(() => {
+    if (!currentBranch?.id || locations.length === 0) return;
+    const branchLocations = locations.filter(loc => loc.branch_id === currentBranch.id);
+    if (branchLocations.length === 0) return;
+    const defaultLocation = branchLocations.find(loc => loc.is_default) || branchLocations[0];
+    if (!defaultLocation) return;
+    setTransactionForm(prev => ({ ...prev, location_id: prev.location_id || defaultLocation.id }));
+    setPurchaseOrderForm(prev => ({ ...prev, location_id: prev.location_id || defaultLocation.id }));
+    setGoodsReceiptForm(prev => ({ ...prev, location_id: prev.location_id || defaultLocation.id }));
+  }, [locations, currentBranch]);
 
   async function checkCreatorRole() {
     try {
@@ -78,17 +149,37 @@ export default function InventoryManagement() {
     }
   }
 
-  async function loadData() {
+  async function loadData(branchId) {
+    if (!branchId) return;
     setLoading(true);
     try {
-      const [itemsData, transactionsData, lowStockData] = await Promise.all([
-        inventory.getAllItems(),
-        inventory.getAllTransactions(),
-        inventory.getLowStockItems()
+      const [
+        itemsData,
+        transactionsData,
+        lowStockData,
+        suppliersData,
+        locationsData,
+        purchaseOrdersData,
+        goodsReceiptsData,
+        branchStockData
+      ] = await Promise.all([
+        inventory.getAllItems({ branchId }),
+        inventory.getAllTransactions({ branch_id: branchId }),
+        inventory.getLowStockItems(),
+        inventory.getSuppliers(),
+        inventory.getLocations(branchId),
+        inventory.getPurchaseOrders({ branch_id: branchId }),
+        inventory.getGoodsReceipts({ branch_id: branchId }),
+        inventory.getBranchStock(branchId)
       ]);
       setItems(itemsData || []);
       setTransactions(transactionsData || []);
       setLowStockItems(lowStockData || []);
+      setSuppliers(suppliersData || []);
+      setLocations(locationsData || []);
+      setPurchaseOrders(purchaseOrdersData || []);
+      setGoodsReceipts(goodsReceiptsData || []);
+      setBranchStock(branchStockData || []);
     } catch (error) {
       console.error('Error loading data:', error);
       alert('Failed to load inventory data: ' + error.message);
@@ -148,7 +239,9 @@ export default function InventoryManagement() {
         savedItem = await inventory.createItem(itemData);
       }
       
-      await loadData();
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id);
+      }
       setShowItemForm(false);
       setEditingItem(null);
       setImageFile(null);
@@ -234,7 +327,9 @@ export default function InventoryManagement() {
     if (!confirm('Are you sure you want to delete this item?')) return;
     try {
       await inventory.deleteItem(itemId);
-      await loadData();
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id);
+      }
     } catch (error) {
       console.error('Error deleting item:', error);
       alert('Failed to delete item: ' + error.message);
@@ -244,14 +339,44 @@ export default function InventoryManagement() {
   // Handle transaction form
   function handleTransactionFormChange(e) {
     const { name, value } = e.target;
-    setTransactionForm(prev => ({
-      ...prev,
-      [name]: value === '' ? '' : (name === 'quantity' || name === 'unit_price' ? parseFloat(value) || '' : value)
-    }));
+    setTransactionForm(prev => {
+      const next = {
+        ...prev,
+        [name]: ['quantity', 'unit_price'].includes(name)
+          ? (value === '' ? '' : (parseFloat(value) || ''))
+          : value
+      };
+      if (name === 'transaction_type' && value !== 'transfer') {
+        next.target_location_id = '';
+      }
+      return next;
+    });
   }
 
   async function handleTransactionSubmit(e) {
     e.preventDefault();
+    if (!transactionForm.item_id) {
+      alert('Select an item for the transaction.');
+      return;
+    }
+    if (!transactionForm.quantity || Number(transactionForm.quantity) <= 0) {
+      alert('Enter a valid quantity.');
+      return;
+    }
+    if (['in', 'out', 'adjustment'].includes(transactionForm.transaction_type) && !transactionForm.location_id) {
+      alert('Select a location for this transaction.');
+      return;
+    }
+    if (transactionForm.transaction_type === 'transfer') {
+      if (!transactionForm.location_id || !transactionForm.target_location_id) {
+        alert('Select both source and target locations for a transfer.');
+        return;
+      }
+      if (transactionForm.location_id === transactionForm.target_location_id) {
+        alert('Source and target locations must be different.');
+        return;
+      }
+    }
     try {
       const transactionData = {
         ...transactionForm,
@@ -261,11 +386,14 @@ export default function InventoryManagement() {
         unit_price: transactionForm.unit_price ? parseFloat(transactionForm.unit_price) : null,
         reference_number: transactionForm.reference_number || null,
         reference_type: transactionForm.reference_type || null,
-        notes: transactionForm.notes || null
+        notes: transactionForm.notes || null,
+        branch_id: currentBranch?.id || null
       };
 
       await inventory.createTransaction(transactionData);
-      await loadData();
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id);
+      }
       setShowTransactionForm(false);
       setTransactionForm({
         item_id: '',
@@ -274,7 +402,9 @@ export default function InventoryManagement() {
         unit_price: '',
         reference_number: '',
         reference_type: '',
-        notes: ''
+        notes: '',
+        location_id: '',
+        target_location_id: ''
       });
     } catch (error) {
       console.error('Error creating transaction:', error);
@@ -282,6 +412,251 @@ export default function InventoryManagement() {
     }
   }
 
+
+  function handleSupplierFormChange(e) {
+    const { name, value } = e.target
+    setSupplierForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  async function handleSupplierSubmit(e) {
+    e.preventDefault()
+    try {
+      await inventory.createSupplier(supplierForm)
+      setShowSupplierForm(false)
+      setSupplierForm({
+        name: '',
+        code: '',
+        contact_name: '',
+        email: '',
+        phone: '',
+        tax_number: '',
+        notes: ''
+      })
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id)
+      }
+    } catch (error) {
+      console.error('Error creating supplier:', error)
+      alert('Failed to create supplier: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  function handleLocationFormChange(e) {
+    const { name, value, type, checked } = e.target
+    setLocationForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }))
+  }
+
+  async function handleLocationSubmit(e) {
+    e.preventDefault()
+    if (!currentBranch?.id) {
+      alert('Select a branch before creating locations.')
+      return
+    }
+    try {
+      const payload = {
+        ...locationForm,
+        branch_id: currentBranch.id
+      }
+      const created = await inventory.createLocation(payload)
+      if (locationForm.is_default) {
+        await inventory.setDefaultLocation(created.id, currentBranch.id)
+      }
+      setShowLocationForm(false)
+      setLocationForm({ name: '', code: '', description: '', is_default: false })
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id)
+      }
+    } catch (error) {
+      console.error('Error creating location:', error)
+      alert('Failed to create location: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  function handlePurchaseOrderFormChange(e) {
+    const { name, value } = e.target
+    setPurchaseOrderForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  function updatePurchaseOrderItem(index, field, value) {
+    setPurchaseOrderItems(prev => prev.map((row, i) => (
+      i === index ? { ...row, [field]: value } : row
+    )))
+  }
+
+  function addPurchaseOrderItemRow() {
+    setPurchaseOrderItems(prev => [...prev, { item_id: '', quantity: '', unit_price: '' }])
+  }
+
+  function removePurchaseOrderItemRow(index) {
+    setPurchaseOrderItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev)
+  }
+
+  async function handlePurchaseOrderSubmit(e) {
+    e.preventDefault()
+    if (!currentBranch?.id) {
+      alert('Select a branch before creating purchase orders.')
+      return
+    }
+    const cleanedItems = purchaseOrderItems
+      .filter(item => item.item_id && Number(item.quantity) > 0)
+      .map(item => ({
+        item_id: item.item_id,
+        quantity: Number(item.quantity),
+        unit_price: item.unit_price ? Number(item.unit_price) : null,
+        notes: item.notes || null
+      }))
+
+    if (cleanedItems.length === 0) {
+      alert('Add at least one item to the purchase order.')
+      return
+    }
+
+    const orderPayload = {
+      branch_id: currentBranch.id,
+      supplier_id: purchaseOrderForm.supplier_id || null,
+      location_id: purchaseOrderForm.location_id || null,
+      expected_date: purchaseOrderForm.expected_date || null,
+      reference_number: purchaseOrderForm.reference_number || null,
+      notes: purchaseOrderForm.notes || null
+    }
+
+    try {
+      await inventory.createPurchaseOrder(orderPayload, cleanedItems)
+      setShowPurchaseOrderForm(false)
+      setPurchaseOrderForm({
+        supplier_id: '',
+        location_id: purchaseOrderForm.location_id,
+        expected_date: today,
+        reference_number: '',
+        notes: ''
+      })
+      setPurchaseOrderItems([{ item_id: '', quantity: '', unit_price: '' }])
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id)
+      }
+    } catch (error) {
+      console.error('Error creating purchase order:', error)
+      alert('Failed to create purchase order: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  function handleGoodsReceiptFormChange(e) {
+    const { name, value } = e.target
+    setGoodsReceiptForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  function updateGoodsReceiptItem(index, field, value) {
+    setGoodsReceiptItems(prev => prev.map((row, i) => (
+      i === index ? { ...row, [field]: value } : row
+    )))
+  }
+
+  function addGoodsReceiptItemRow() {
+    setGoodsReceiptItems(prev => [...prev, { item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }])
+  }
+
+  function removeGoodsReceiptItemRow(index) {
+    setGoodsReceiptItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== index) : prev)
+  }
+
+  async function handleGoodsReceiptPurchaseOrderChange(purchaseOrderId) {
+    setGoodsReceiptForm(prev => ({ ...prev, purchase_order_id: purchaseOrderId }))
+    if (!purchaseOrderId) {
+      setSelectedPurchaseOrder(null)
+      setGoodsReceiptItems([{ item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }])
+      return
+    }
+    try {
+      const poDetails = await inventory.getPurchaseOrderById(purchaseOrderId)
+      setSelectedPurchaseOrder(poDetails)
+      const outstandingItems = (poDetails.purchase_order_items || []).map(item => {
+        const remaining = Number(item.quantity || 0) - Number(item.received_quantity || 0)
+        return {
+          purchase_order_item_id: item.id,
+          item_id: item.item_id,
+          item_name: item.inventory_items?.item_name,
+          ordered_quantity: Number(item.quantity || 0),
+          received_quantity: Number(item.received_quantity || 0),
+          quantity: remaining > 0 ? remaining : 0,
+          unit_price: item.unit_price || 0
+        }
+      })
+      setGoodsReceiptItems(outstandingItems.length ? outstandingItems : [{ item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }])
+      if (poDetails.location_id) {
+        setGoodsReceiptForm(prev => ({
+          ...prev,
+          purchase_order_id: purchaseOrderId,
+          location_id: prev.location_id || poDetails.location_id
+        }))
+      }
+    } catch (error) {
+      console.error('Error loading purchase order:', error)
+      alert('Failed to load purchase order: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  async function handleGoodsReceiptSubmit(e) {
+    e.preventDefault()
+    if (!currentBranch?.id) {
+      alert('Select a branch before recording receipts.')
+      return
+    }
+    if (!goodsReceiptForm.location_id) {
+      alert('Select a receiving location.')
+      return
+    }
+
+    const cleanedItems = goodsReceiptItems
+      .filter(item => item.item_id && Number(item.quantity) > 0)
+      .map(item => ({
+        purchase_order_item_id: item.purchase_order_item_id,
+        item_id: item.item_id,
+        quantity: Number(item.quantity),
+        unit_price: item.unit_price ? Number(item.unit_price) : null
+      }))
+
+    if (cleanedItems.length === 0) {
+      alert('Add at least one item to the receipt.')
+      return
+    }
+
+    const payload = {
+      branch_id: currentBranch.id,
+      purchase_order_id: goodsReceiptForm.purchase_order_id || null,
+      location_id: goodsReceiptForm.location_id,
+      received_date: goodsReceiptForm.received_date || null,
+      reference_number: goodsReceiptForm.reference_number || null,
+      notes: goodsReceiptForm.notes || null
+    }
+
+    try {
+      await inventory.recordGoodsReceipt(payload, cleanedItems)
+      setShowGoodsReceiptForm(false)
+      setGoodsReceiptForm({
+        purchase_order_id: '',
+        location_id: goodsReceiptForm.location_id,
+        received_date: today,
+        reference_number: '',
+        notes: ''
+      })
+      setGoodsReceiptItems([{ item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }])
+      setSelectedPurchaseOrder(null)
+      if (currentBranch?.id) {
+        await loadData(currentBranch.id)
+      }
+    } catch (error) {
+      console.error('Error recording goods receipt:', error)
+      alert('Failed to record goods receipt: ' + (error.message || 'Unknown error'))
+    }
+  }
+ 
+ 
+  function getBranchStockEntries(itemId) {
+    return branchStock.filter(entry => entry.item_id === itemId);
+  }
 
   function getStockStatus(item) {
     if (item.current_stock <= item.min_stock_level) return 'low';
@@ -297,7 +672,7 @@ export default function InventoryManagement() {
     }
   }
 
-  if (loading || roleLoading) {
+  if (loading || roleLoading || branchLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -321,6 +696,22 @@ export default function InventoryManagement() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
           <p className="text-gray-600 mb-4">You do not have permission to access the Inventory Management module.</p>
           <p className="text-sm text-gray-500">Please contact an administrator to grant you inventory access permissions.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (canViewInventory && !currentBranch) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center border border-blue-200">
+          <div className="text-blue-600 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Select a Branch</h1>
+          <p className="text-gray-600 mb-4">Inventory data is managed per branch. Please choose a branch from the top bar to continue.</p>
         </div>
       </div>
     );
@@ -418,6 +809,46 @@ export default function InventoryManagement() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('suppliers')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'suppliers'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Suppliers ({suppliers.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('locations')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'locations'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Locations ({locations.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('purchase-orders')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'purchase-orders'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Purchase Orders ({purchaseOrders.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('goods-receipts')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'goods-receipts'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Goods Receipts ({goodsReceipts.length})
+            </button>
           </div>
 
           {/* Items Tab */}
@@ -466,6 +897,7 @@ export default function InventoryManagement() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredItems.map((item) => {
                       const stockStatus = getStockStatus(item);
+                      const branchEntries = getBranchStockEntries(item.id);
                       return (
                         <tr key={item.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
@@ -502,7 +934,22 @@ export default function InventoryManagement() {
                               {item.status}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{item.location || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {branchEntries.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {branchEntries.map((entry) => (
+                                  <span
+                                    key={`${entry.item_id}-${entry.location_id}`}
+                                    className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-100"
+                                  >
+                                    {locations.find(loc => loc.id === entry.location_id)?.name || 'Location'}: {Number(entry.quantity || 0)}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span>{item.location || '-'}</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-sm">
                             {item.serial_number ? (
                               <button
@@ -641,6 +1088,208 @@ export default function InventoryManagement() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Suppliers Tab */}
+          {activeTab === 'suppliers' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Supplier Directory</h2>
+                  <p className="text-sm text-gray-500">Manage vendors feeding the supply chain.</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowSupplierForm(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                  >
+                    + Add Supplier
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {suppliers.map((supplier) => (
+                      <tr key={supplier.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{supplier.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{supplier.contact_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{supplier.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-blue-600">{supplier.email || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${supplier.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {supplier.status || 'active'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {suppliers.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No suppliers yet. {canEdit && 'Add your first vendor to build purchasing workflows.'}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Locations Tab */}
+          {activeTab === 'locations' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Stock Locations</h2>
+                  <p className="text-sm text-gray-500">Warehouse and service bay storage for {currentBranch?.name || 'selected branch'}.</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowLocationForm(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                  >
+                    + Add Location
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map((location) => (
+                      <tr key={location.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{location.name}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{location.code || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {location.is_default ? (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Default</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{location.description || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No locations configured for this branch.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Purchase Orders Tab */}
+          {activeTab === 'purchase-orders' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Purchase Orders</h2>
+                  <p className="text-sm text-gray-500">Track inbound supply for {currentBranch?.name || 'branch'}.</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowPurchaseOrderForm(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                  >
+                    + New Purchase Order
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expected</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {purchaseOrders.map((po) => (
+                      <tr key={po.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{po.order_number}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{po.inventory_suppliers?.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{po.inventory_locations?.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{po.expected_date ? new Date(po.expected_date).toLocaleDateString() : '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${po.status === 'received' ? 'bg-green-100 text-green-700' : po.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {po.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{po.total_amount ? `₹${po.total_amount.toFixed(2)}` : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {purchaseOrders.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No purchase orders yet.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Goods Receipts Tab */}
+          {activeTab === 'goods-receipts' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-800">Goods Receipts</h2>
+                  <p className="text-sm text-gray-500">Record inbound stock and reconcile purchase orders.</p>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowGoodsReceiptForm(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                  >
+                    + Record Receipt
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receipt #</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Order</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {goodsReceipts.map((receipt) => (
+                      <tr key={receipt.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{receipt.receipt_number}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{receipt.purchase_orders?.order_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{receipt.inventory_locations?.name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{receipt.received_date ? new Date(receipt.received_date).toLocaleDateString() : '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{receipt.reference_number || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {goodsReceipts.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">No goods receipts recorded yet.</div>
+                )}
               </div>
             </div>
           )}
@@ -959,8 +1608,43 @@ export default function InventoryManagement() {
                       <option value="in">Stock In</option>
                       <option value="out">Stock Out</option>
                       <option value="adjustment">Adjustment</option>
+                      <option value="transfer">Transfer</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                    <select
+                      name="location_id"
+                      value={transactionForm.location_id}
+                      onChange={handleTransactionFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="">Select a location</option>
+                      {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map(loc => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {transactionForm.transaction_type === 'transfer' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Target Location *</label>
+                      <select
+                        name="target_location_id"
+                        value={transactionForm.target_location_id}
+                        onChange={handleTransactionFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select destination location</option>
+                        {locations
+                          .filter(loc => !currentBranch || loc.branch_id === currentBranch.id)
+                          .map(loc => (
+                            <option key={loc.id} value={loc.id}>{loc.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                     <input
@@ -1032,6 +1716,486 @@ export default function InventoryManagement() {
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md"
                     >
                       Create Transaction
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Supplier Form Modal */}
+          {showSupplierForm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Add New Supplier</h2>
+                <form onSubmit={handleSupplierSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={supplierForm.name}
+                      onChange={handleSupplierFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
+                    <input
+                      type="text"
+                      name="code"
+                      value={supplierForm.code}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contact Name</label>
+                    <input
+                      type="text"
+                      name="contact_name"
+                      value={supplierForm.contact_name}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={supplierForm.email}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={supplierForm.phone}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tax Number</label>
+                    <input
+                      type="text"
+                      name="tax_number"
+                      value={supplierForm.tax_number}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={supplierForm.notes}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows="2"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowSupplierForm(false)}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    >
+                      Create Supplier
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Location Form Modal */}
+          {showLocationForm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">Add New Location</h2>
+                <form onSubmit={handleLocationSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={locationForm.name}
+                      onChange={handleLocationFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
+                    <input
+                      type="text"
+                      name="code"
+                      value={locationForm.code}
+                      onChange={handleLocationFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      name="description"
+                      value={locationForm.description}
+                      onChange={handleLocationFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows="2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Is Default</label>
+                    <input
+                      type="checkbox"
+                      name="is_default"
+                      checked={locationForm.is_default}
+                      onChange={handleLocationFormChange}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationForm(false)}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    >
+                      Create Location
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Purchase Order Form Modal */}
+          {showPurchaseOrderForm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">New Purchase Order</h2>
+                <form onSubmit={handlePurchaseOrderSubmit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Supplier *</label>
+                      <select
+                        name="supplier_id"
+                        value={purchaseOrderForm.supplier_id}
+                        onChange={handlePurchaseOrderFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select a supplier</option>
+                        {suppliers.map(supplier => (
+                          <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                      <select
+                        name="location_id"
+                        value={purchaseOrderForm.location_id}
+                        onChange={handlePurchaseOrderFormChange}
+                        required
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      >
+                        <option value="">Select a location</option>
+                        {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map(loc => (
+                          <option key={loc.id} value={loc.id}>{loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Expected Date *</label>
+                    <input
+                      type="date"
+                      name="expected_date"
+                      value={purchaseOrderForm.expected_date}
+                      onChange={handlePurchaseOrderFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+                    <input
+                      type="text"
+                      name="reference_number"
+                      value={purchaseOrderForm.reference_number}
+                      onChange={handlePurchaseOrderFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={purchaseOrderForm.notes}
+                      onChange={handlePurchaseOrderFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows="2"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
+                      {purchaseOrderItems.map((item, index) => (
+                        <div key={index} className="flex items-center gap-2 mb-2">
+                          <select
+                            name={`item_id_${index}`}
+                            value={item.item_id}
+                            onChange={(e) => updatePurchaseOrderItem(index, 'item_id', e.target.value)}
+                            className="flex-1 p-2 border border-gray-300 rounded-md"
+                          >
+                            <option value="">Select an item</option>
+                            {items.filter(i => i.status === 'active').map(i => (
+                              <option key={i.id} value={i.id}>{i.item_code} - {i.item_name}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            name={`quantity_${index}`}
+                            value={item.quantity}
+                            onChange={(e) => updatePurchaseOrderItem(index, 'quantity', e.target.value)}
+                            min="0"
+                            className="w-24 p-2 border border-gray-300 rounded-md text-right"
+                          />
+                          <input
+                            type="number"
+                            name={`unit_price_${index}`}
+                            value={item.unit_price}
+                            onChange={(e) => updatePurchaseOrderItem(index, 'unit_price', e.target.value)}
+                            step="0.01"
+                            className="w-24 p-2 border border-gray-300 rounded-md text-right"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePurchaseOrderItemRow(index)}
+                            className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-xs font-medium transition-colors"
+                            title="Remove item"
+                          >
+                            ✖
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={addPurchaseOrderItemRow}
+                        className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-sm font-medium transition-colors"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPurchaseOrderForm(false)
+                        setPurchaseOrderForm({
+                          supplier_id: '',
+                          location_id: purchaseOrderForm.location_id,
+                          expected_date: today,
+                          reference_number: '',
+                          notes: ''
+                        })
+                        setPurchaseOrderItems([{ item_id: '', quantity: '', unit_price: '' }])
+                      }}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    >
+                      Create Purchase Order
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Goods Receipt Form Modal */}
+          {showGoodsReceiptForm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">New Goods Receipt</h2>
+                <form onSubmit={handleGoodsReceiptSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Order *</label>
+                    <select
+                      name="purchase_order_id"
+                      value={goodsReceiptForm.purchase_order_id}
+                      onChange={(e) => handleGoodsReceiptPurchaseOrderChange(e.target.value)}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="">Select a purchase order</option>
+                      {purchaseOrders.map(po => (
+                        <option key={po.id} value={po.id}>{po.order_number} - {po.inventory_suppliers?.name || 'Unknown Supplier'}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedPurchaseOrder && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-700">
+                      <div><strong>Supplier:</strong> {selectedPurchaseOrder.inventory_suppliers?.name || 'N/A'}</div>
+                      <div><strong>Status:</strong> {selectedPurchaseOrder.status}</div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                    <select
+                      name="location_id"
+                      value={goodsReceiptForm.location_id}
+                      onChange={handleGoodsReceiptFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="">Select a receiving location</option>
+                      {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map(loc => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Received Date *</label>
+                    <input
+                      type="date"
+                      name="received_date"
+                      value={goodsReceiptForm.received_date}
+                      onChange={handleGoodsReceiptFormChange}
+                      required
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+                    <input
+                      type="text"
+                      name="reference_number"
+                      value={goodsReceiptForm.reference_number}
+                      onChange={handleGoodsReceiptFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea
+                      name="notes"
+                      value={goodsReceiptForm.notes}
+                      onChange={handleGoodsReceiptFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows="2"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
+                      {goodsReceiptItems.map((item, index) => (
+                        <div key={index} className="mb-3">
+                          <div className="flex items-center gap-2">
+                            <select
+                              name={`item_id_${index}`}
+                              value={item.item_id}
+                              onChange={(e) => updateGoodsReceiptItem(index, 'item_id', e.target.value)}
+                              className="flex-1 p-2 border border-gray-300 rounded-md"
+                            >
+                              <option value="">Select an item</option>
+                              {items.filter(i => i.status === 'active').map(i => (
+                                <option key={i.id} value={i.id}>{i.item_code} - {i.item_name}</option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              name={`quantity_${index}`}
+                              value={item.quantity}
+                              onChange={(e) => updateGoodsReceiptItem(index, 'quantity', e.target.value)}
+                              min="0"
+                              className="w-24 p-2 border border-gray-300 rounded-md text-right"
+                            />
+                            <input
+                              type="number"
+                              name={`unit_price_${index}`}
+                              value={item.unit_price}
+                              onChange={(e) => updateGoodsReceiptItem(index, 'unit_price', e.target.value)}
+                              step="0.01"
+                              className="w-24 p-2 border border-gray-300 rounded-md text-right"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeGoodsReceiptItemRow(index)}
+                              className="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded text-xs font-medium transition-colors"
+                              title="Remove item"
+                            >
+                              ✖
+                            </button>
+                          </div>
+                          {item.ordered_quantity !== undefined && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              Ordered: {item.ordered_quantity} • Received: {item.received_quantity || 0} • Remaining: {Math.max(0, (item.ordered_quantity || 0) - (item.received_quantity || 0))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={addGoodsReceiptItemRow}
+                        className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-sm font-medium transition-colors"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowGoodsReceiptForm(false)
+                        setSelectedPurchaseOrder(null)
+                        setGoodsReceiptForm({
+                          purchase_order_id: '',
+                          location_id: goodsReceiptForm.location_id,
+                          received_date: today,
+                          reference_number: '',
+                          notes: ''
+                        })
+                        setGoodsReceiptItems([{ item_id: '', quantity: '', unit_price: '', purchase_order_item_id: null }])
+                      }}
+                      className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    >
+                      Create Goods Receipt
                     </button>
                   </div>
                 </form>

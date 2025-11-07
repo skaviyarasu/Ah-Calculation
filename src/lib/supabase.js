@@ -357,7 +357,7 @@ export const rbac = {
   // This function now includes users from both user_roles table and battery_optimization_jobs table
   // to show all authenticated users, even if they don't have roles assigned yet
   async getAllUsersWithRoles() {
-    const [{ data: rolesData, error: rolesError }, { data: jobsData, error: jobsError }, directoryResponse] = await Promise.all([
+    const [{ data: rolesData, error: rolesError }, { data: jobsData, error: jobsError }, directoryResponse, { data: branchAssignments, error: branchError }] = await Promise.all([
       supabase
         .from('user_roles')
         .select(`
@@ -373,11 +373,32 @@ export const rbac = {
         .from('battery_optimization_jobs')
         .select('user_id, created_at')
         .order('created_at', { ascending: false }),
-      supabase.rpc('admin_get_all_users')
+      supabase.rpc('admin_get_all_users'),
+      supabase
+        .from('user_branch_map')
+        .select(`
+          id,
+          user_id,
+          branch_id,
+          is_primary,
+          created_at,
+          branches:branch_id (
+            id,
+            name,
+            code,
+            organization_id,
+            organizations:organization_id (
+              id,
+              name,
+              code
+            )
+          )
+        `)
     ])
 
     if (rolesError) throw rolesError
     if (jobsError) throw jobsError
+    if (branchError) throw branchError
 
     let directoryData = null
     if (directoryResponse?.error) {
@@ -424,6 +445,30 @@ export const rbac = {
       })
     })
 
+    // Map branches to users
+    const userBranchMap = new Map()
+    branchAssignments?.forEach(entry => {
+      if (!entry?.user_id) return
+      if (!userBranchMap.has(entry.user_id)) {
+        userBranchMap.set(entry.user_id, [])
+      }
+
+      const branchDetails = entry.branches || {}
+      const orgDetails = branchDetails.organizations || {}
+
+      userBranchMap.get(entry.user_id).push({
+        id: entry.id,
+        branch_id: branchDetails.id,
+        branch_name: branchDetails.name,
+        branch_code: branchDetails.code,
+        organization_id: branchDetails.organization_id,
+        organization_name: orgDetails.name,
+        organization_code: orgDetails.code,
+        is_primary: entry.is_primary,
+        created_at: entry.created_at
+      })
+    })
+
     // Preserve directory ordering first, then any remaining IDs
     const orderedIds = []
     directoryData?.forEach(user => {
@@ -438,6 +483,7 @@ export const rbac = {
       const roleEntries = userRolesMap.get(userId) || []
       const roles = roleEntries.map(r => r.role).filter(Boolean)
       const info = userDirectoryMap.get(userId) || {}
+      const branches = userBranchMap.get(userId) || []
 
       const assignedAt = roleEntries.reduce((earliest, entry) => {
         if (!entry?.created_at) return earliest
@@ -449,6 +495,8 @@ export const rbac = {
         ? 'admin'
         : roles[0] || 'user'
 
+      const primaryBranch = branches.find(branch => branch.is_primary) || null
+
       return {
         id: userId,
         roles,
@@ -459,7 +507,9 @@ export const rbac = {
         last_sign_in_at: info.last_sign_in_at || null,
         created_at: info.created_at || null,
         primary_role: primaryRole,
-        has_roles: roles.length > 0
+        has_roles: roles.length > 0,
+        branches,
+        primary_branch: primaryBranch
       }
     })
 
@@ -599,14 +649,206 @@ export const rbac = {
   }
 }
 
+// Organization and branch helper functions
+export const organization = {
+  async getOrganizations() {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    return data || []
+  },
+
+  async createOrganization(payload) {
+    const { data, error } = await supabase
+      .from('organizations')
+      .insert(payload)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async updateOrganization(id, updates) {
+    const { data, error } = await supabase
+      .from('organizations')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async getBranches(organizationId = null) {
+    let query = supabase
+      .from('branches')
+      .select(`
+        *,
+        organizations:organization_id (
+          id,
+          name,
+          code
+        )
+      `)
+      .order('name', { ascending: true })
+
+    if (organizationId) {
+      query = query.eq('organization_id', organizationId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async createBranch(payload) {
+    const { data, error } = await supabase
+      .from('branches')
+      .insert(payload)
+      .select(`
+        *,
+        organizations:organization_id (
+          id,
+          name,
+          code
+        )
+      `)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async updateBranch(id, updates) {
+    const { data, error } = await supabase
+      .from('branches')
+      .update(updates)
+      .eq('id', id)
+      .select(`
+        *,
+        organizations:organization_id (
+          id,
+          name,
+          code
+        )
+      `)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async assignUserToBranch(userId, branchId, { is_primary = false, assignedBy = null } = {}) {
+    const payload = {
+      user_id: userId,
+      branch_id: branchId,
+      is_primary,
+      assigned_by: assignedBy
+    }
+
+    const { data, error } = await supabase
+      .from('user_branch_map')
+      .upsert(payload, { onConflict: 'user_id,branch_id' })
+      .select(`
+        id,
+        user_id,
+        branch_id,
+        is_primary,
+        branches:branch_id (
+          id,
+          name,
+          code,
+          organization_id,
+          organizations:organization_id (
+            id,
+            name,
+            code
+          )
+        )
+      `)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async removeUserBranch(mapId) {
+    const { error } = await supabase
+      .from('user_branch_map')
+      .delete()
+      .eq('id', mapId)
+
+    if (error) throw error
+    return true
+  },
+
+  async setPrimaryBranch(userId, branchId) {
+    // Reset current primary flags
+    const { error: resetError } = await supabase
+      .from('user_branch_map')
+      .update({ is_primary: false })
+      .eq('user_id', userId)
+
+    if (resetError) throw resetError
+
+    const { data, error } = await supabase
+      .from('user_branch_map')
+      .update({ is_primary: true })
+      .eq('user_id', userId)
+      .eq('branch_id', branchId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async getUserBranches(userId) {
+    const { data, error } = await supabase
+      .from('user_branch_map')
+      .select(`
+        id,
+        user_id,
+        is_primary,
+        branch_id,
+        branches:branch_id (
+          id,
+          name,
+          code,
+          organization_id,
+          organizations:organization_id (
+            id,
+            name,
+            code
+          )
+        )
+      `)
+      .eq('user_id', userId)
+
+    if (error) throw error
+    return data || []
+  }
+}
+
 // Inventory management helper functions
 export const inventory = {
   // Get all inventory items
-  async getAllItems() {
-    const { data, error } = await supabase
+  async getAllItems({ branchId } = {}) {
+    let query = supabase
       .from('inventory_items')
       .select('*')
       .order('item_name', { ascending: true })
+
+    if (branchId) {
+      query = query.order('item_name', { ascending: true })
+    }
+
+    const { data, error } = await query
     if (error) throw error
     return data
   },
@@ -720,11 +962,20 @@ export const inventory = {
     return data
   },
 
+  async getBranchStock(branchId) {
+    if (!branchId) return []
+    const { data, error } = await supabase.rpc('get_branch_stock', {
+      p_branch: branchId
+    })
+    if (error) throw error
+    return data || []
+  },
+
   // Create inventory transaction
   async createTransaction(transactionData) {
     const user = await auth.getCurrentUser()
     if (!user) throw new Error('User not authenticated')
-    
+
     const { data, error } = await supabase
       .from('inventory_transactions')
       .insert([{
@@ -758,15 +1009,29 @@ export const inventory = {
           item_code,
           item_name,
           category
+        ),
+        inventory_locations!inventory_transactions_location_id_fkey (
+          name,
+          branch_id
+        ),
+        target_location:inventory_locations!inventory_transactions_target_location_id_fkey (
+          name,
+          branch_id
         )
       `)
       .order('created_at', { ascending: false })
-    
+
     if (filters.item_id) {
       query = query.eq('item_id', filters.item_id)
     }
     if (filters.transaction_type) {
       query = query.eq('transaction_type', filters.transaction_type)
+    }
+    if (filters.branch_id) {
+      query = query.eq('branch_id', filters.branch_id)
+    }
+    if (filters.location_id) {
+      query = query.eq('location_id', filters.location_id)
     }
     if (filters.start_date) {
       query = query.gte('created_at', filters.start_date)
@@ -774,10 +1039,210 @@ export const inventory = {
     if (filters.end_date) {
       query = query.lte('created_at', filters.end_date)
     }
-    
+
     const { data, error } = await query
     if (error) throw error
     return data
+  },
+
+  // Suppliers
+  async getSuppliers() {
+    const { data, error } = await supabase
+      .from('inventory_suppliers')
+      .select('*')
+      .order('name', { ascending: true })
+    if (error) throw error
+    return data || []
+  },
+
+  async createSupplier(payload) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('inventory_suppliers')
+      .insert([{ ...payload, created_by: user.id }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async updateSupplier(id, updates) {
+    const { data, error } = await supabase
+      .from('inventory_suppliers')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Locations
+  async getLocations(branchId = null) {
+    let query = supabase
+      .from('inventory_locations')
+      .select('*')
+      .order('is_default', { ascending: false })
+      .order('name', { ascending: true })
+
+    if (branchId) {
+      query = query.eq('branch_id', branchId)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async createLocation(payload) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('User not authenticated')
+
+    const { data, error } = await supabase
+      .from('inventory_locations')
+      .insert([{ ...payload, created_by: user.id }])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async setDefaultLocation(locationId, branchId) {
+    if (!locationId || !branchId) return
+    const { error: resetError } = await supabase
+      .from('inventory_locations')
+      .update({ is_default: false })
+      .eq('branch_id', branchId)
+    if (resetError) throw resetError
+
+    const { data, error } = await supabase
+      .from('inventory_locations')
+      .update({ is_default: true })
+      .eq('id', locationId)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Purchase orders
+  async createPurchaseOrder(order, items) {
+    const { data, error } = await supabase.rpc('create_purchase_order', {
+      po_data: order,
+      po_items: items
+    })
+    if (error) throw error
+    return data
+  },
+
+  async getPurchaseOrders(filters = {}) {
+    let query = supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        inventory_suppliers: supplier_id (
+          id,
+          name,
+          code,
+          phone,
+          email
+        ),
+        inventory_locations: location_id (
+          id,
+          name,
+          branch_id
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (filters.branch_id) {
+      query = query.eq('branch_id', filters.branch_id)
+    }
+    if (filters.status) {
+      query = query.eq('status', filters.status)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  async getPurchaseOrderById(id) {
+    const { data, error } = await supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        inventory_suppliers:supplier_id (
+          id,
+          name,
+          code,
+          phone,
+          email
+        ),
+        inventory_locations:location_id (
+          id,
+          name,
+          branch_id
+        ),
+        purchase_order_items (
+          id,
+          item_id,
+          quantity,
+          unit_price,
+          received_quantity,
+          inventory_items (
+            item_code,
+            item_name,
+            unit
+          )
+        )
+      `)
+      .eq('id', id)
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  // Goods receipts
+  async recordGoodsReceipt(payload, items) {
+    const { data, error } = await supabase.rpc('record_goods_receipt', {
+      gr_data: payload,
+      gr_items: items
+    })
+    if (error) throw error
+    return data
+  },
+
+  async getGoodsReceipts(filters = {}) {
+    let query = supabase
+      .from('goods_receipts')
+      .select(`
+        *,
+        purchase_orders:purchase_order_id (
+          id,
+          order_number,
+          status
+        ),
+        inventory_locations:location_id (
+          id,
+          name,
+          branch_id
+        )
+      `)
+      .order('created_at', { ascending: false })
+
+    if (filters.branch_id) {
+      query = query.eq('branch_id', filters.branch_id)
+    }
+    if (filters.purchase_order_id) {
+      query = query.eq('purchase_order_id', filters.purchase_order_id)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
   },
 
   // Search items

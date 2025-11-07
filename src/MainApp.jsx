@@ -5,12 +5,19 @@ import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
 import AccountingDashboard from "./components/AccountingDashboard";
 import { useRole } from "./hooks/useRole";
+import { useBranch } from "./hooks/useBranch";
 
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const { isAdmin, loading, canViewInventory } = useRole();
+  const {
+    branches: availableBranches,
+    currentBranch,
+    loading: branchLoading,
+    selectBranch
+  } = useBranch();
 
   // Redirect away from admin view if user is not admin
   useEffect(() => {
@@ -99,6 +106,26 @@ function MainApp() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              {availableBranches.length > 0 && (
+                <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs shadow-sm backdrop-blur-md">
+                  <span className="font-medium text-muted-foreground uppercase tracking-[0.18em]">Branch</span>
+                  <select
+                    value={currentBranch?.id || ""}
+                    onChange={(event) => selectBranch(event.target.value)}
+                    className="bg-transparent text-sm font-medium text-foreground focus:outline-none"
+                  >
+                    {availableBranches.map((branch) => (
+                      <option key={branch.id} value={branch.branch_id}>
+                        {branch.branch_name || "Unnamed"}
+                        {branch.organization_name ? ` • ${branch.organization_name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {branchLoading && (
+                    <span className="h-2 w-2 rounded-full bg-accent animate-pulse" aria-hidden="true"></span>
+                  )}
+                </div>
+              )}
               <button
                 onClick={() => setCommandOpen(true)}
                 className="hidden sm:flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur-md transition hover:border-accent/50 hover:text-foreground"
