@@ -626,7 +626,7 @@ export default function App() {
   const rMin = useMemo(() => totalsAH.reduce((a, t, i) => (t < totalsAH[a] ? i : a), 0), [totalsAH]);
   const spread = useMemo(() => (totalsAH[rMax] ?? 0) - (totalsAH[rMin] ?? 0), [totalsAH, rMax, rMin]);
 
-  const voltageExtremes = useMemo(() => {
+  const rowVoltageExtremes = useMemo(() => {
     let max = { value: -Infinity, series: null };
     let min = { value: Infinity, series: null };
 
@@ -644,6 +644,27 @@ export default function App() {
 
     return { max, min, diff };
   }, [averageVoltages]);
+
+  const cellVoltageExtremes = useMemo(() => {
+    let max = { value: -Infinity, series: null, parallel: null };
+    let min = { value: Infinity, series: null, parallel: null };
+
+    grid.forEach((row, i) => {
+      row.forEach((cell, j) => {
+        if (isFiniteNumber(cell?.v)) {
+          if (cell.v > max.value) max = { value: cell.v, series: i, parallel: j };
+          if (cell.v < min.value) min = { value: cell.v, series: i, parallel: j };
+        }
+      });
+    });
+
+    const diff =
+      isFiniteNumber(max.value) && isFiniteNumber(min.value)
+        ? max.value - min.value
+        : NaN;
+
+    return { max, min, diff };
+  }, [grid]);
 
   const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
 
@@ -706,10 +727,10 @@ export default function App() {
     const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       const filename = `AH_Balancer_${jobCard || 'Job'}_${S}Sx${P}P.csv`;
-      a.href = url;
+    a.href = url;
       a.download = filename;
       document.body.appendChild(a);
-      a.click();
+    a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e) {
@@ -784,28 +805,58 @@ export default function App() {
         ["", ""],
         ["Voltage Analysis", ""],
         [
-          "Max Avg Row Voltage (V)",
-          isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "Not recorded"
+          "Max Cell Voltage (V)",
+          isFiniteNumber(cellVoltageExtremes.max.value)
+            ? cellVoltageExtremes.max.value.toFixed(3)
+            : "Not recorded"
+        ],
+        [
+          "Max Voltage Location",
+          cellVoltageExtremes.max.series !== null
+            ? `S${cellVoltageExtremes.max.series + 1} P${(cellVoltageExtremes.max.parallel ?? 0) + 1}`
+            : "Not recorded"
+        ],
+        [
+          "Min Cell Voltage (V)",
+          isFiniteNumber(cellVoltageExtremes.min.value)
+            ? cellVoltageExtremes.min.value.toFixed(3)
+            : "Not recorded"
+        ],
+        [
+          "Min Voltage Location",
+          cellVoltageExtremes.min.series !== null
+            ? `S${cellVoltageExtremes.min.series + 1} P${(cellVoltageExtremes.min.parallel ?? 0) + 1}`
+            : "Not recorded"
+        ],
+        [
+          "Avg V (Max Row)",
+          isFiniteNumber(rowVoltageExtremes.max.value)
+            ? rowVoltageExtremes.max.value.toFixed(3)
+            : "Not recorded"
         ],
         [
           "Max Voltage Row",
-          voltageExtremes.max.series !== null
-            ? `S${voltageExtremes.max.series + 1}`
+          rowVoltageExtremes.max.series !== null
+            ? `S${rowVoltageExtremes.max.series + 1}`
             : "Not recorded"
         ],
         [
-          "Min Avg Row Voltage (V)",
-          isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "Not recorded"
+          "Avg V (Min Row)",
+          isFiniteNumber(rowVoltageExtremes.min.value)
+            ? rowVoltageExtremes.min.value.toFixed(3)
+            : "Not recorded"
         ],
         [
           "Min Voltage Row",
-          voltageExtremes.min.series !== null
-            ? `S${voltageExtremes.min.series + 1}`
+          rowVoltageExtremes.min.series !== null
+            ? `S${rowVoltageExtremes.min.series + 1}`
             : "Not recorded"
         ],
         [
-          "Voltage Spread (V)",
-          isFiniteNumber(voltageExtremes.diff) ? voltageExtremes.diff.toFixed(3) : "Not recorded"
+          "Voltage Difference (Avg Rows, V)",
+          isFiniteNumber(rowVoltageExtremes.diff)
+            ? rowVoltageExtremes.diff.toFixed(3)
+            : "Not recorded"
         ],
       ]);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
@@ -985,10 +1036,10 @@ export default function App() {
             {!currentJobId && (
               <p className="text-xs text-gray-500">Will be auto-generated when you save</p>
             )}
-          </div>
+              </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Customer Name</label>
-            <input
+                <input
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
@@ -997,8 +1048,8 @@ export default function App() {
                 !isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''
               }`}
               placeholder="Enter customer name"
-            />
-          </div>
+                />
+              </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Job Card #</label>
             <input
@@ -1011,7 +1062,7 @@ export default function App() {
               }`}
               placeholder="Enter job card number"
             />
-          </div>
+            </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Date</label>
                 <input
@@ -1083,19 +1134,38 @@ export default function App() {
             Avg V (Min row): <b>{isFiniteNumber(averageVoltages[rMin]) ? averageVoltages[rMin].toFixed(3) : "—"}</b>
           </div>
           <div className="text-sm">
-            Max avg row voltage: <b>{isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "—"} V</b>
-            {voltageExtremes.max.series !== null && (
-              <span> (S{voltageExtremes.max.series + 1})</span>
+            Max cell voltage: <b>{isFiniteNumber(cellVoltageExtremes.max.value) ? cellVoltageExtremes.max.value.toFixed(3) : "—"} V</b>
+            {cellVoltageExtremes.max.series !== null && (
+              <span> (S{cellVoltageExtremes.max.series + 1}P{(cellVoltageExtremes.max.parallel ?? 0) + 1})</span>
             )}
           </div>
           <div className="text-sm">
-            Min avg row voltage: <b>{isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "—"} V</b>
-            {voltageExtremes.min.series !== null && (
-              <span> (S{voltageExtremes.min.series + 1})</span>
+            Min cell voltage: <b>{isFiniteNumber(cellVoltageExtremes.min.value) ? cellVoltageExtremes.min.value.toFixed(3) : "—"} V</b>
+            {cellVoltageExtremes.min.series !== null && (
+              <span> (S{cellVoltageExtremes.min.series + 1}P{(cellVoltageExtremes.min.parallel ?? 0) + 1})</span>
             )}
           </div>
+          <div className="text-sm space-x-2">
+            <span>
+              Avg V (Max row): <b>{isFiniteNumber(rowVoltageExtremes.max.value) ? rowVoltageExtremes.max.value.toFixed(3) : "—"} V</b>
+              {rowVoltageExtremes.max.series !== null && (
+                <span> (S{rowVoltageExtremes.max.series + 1})</span>
+              )}
+            </span>
+            <span className="text-slate-400">|</span>
+            <span>
+              Avg V (Min row): <b>{isFiniteNumber(rowVoltageExtremes.min.value) ? rowVoltageExtremes.min.value.toFixed(3) : "—"} V</b>
+              {rowVoltageExtremes.min.series !== null && (
+                <span> (S{rowVoltageExtremes.min.series + 1})</span>
+              )}
+            </span>
+          </div>
           <div className="text-sm">
-            Voltage spread: <b>{isFiniteNumber(voltageExtremes.diff) ? voltageExtremes.diff.toFixed(3) : "—"} V</b>
+            Voltage difference: <b>{
+              isFiniteNumber(rowVoltageExtremes.max.value) && isFiniteNumber(rowVoltageExtremes.min.value)
+                ? (rowVoltageExtremes.max.value - rowVoltageExtremes.min.value).toFixed(3)
+                : "—"
+            } V</b>
           </div>
           {suggestion ? (
             <div className="text-sm">
@@ -1153,8 +1223,8 @@ export default function App() {
                       </svg>
               </button>
                   )}
-                </div>
-                
+          </div>
+
                 {/* Search Results Dropdown */}
                 {showSearchResults && searchQuery.trim() && filteredJobs.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
@@ -1178,17 +1248,17 @@ export default function App() {
                               {currentJobId === job.id && (
                                 <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Current</span>
                               )}
-                            </div>
+              </div>
                             <div className="text-xs text-gray-500 mt-1">
                               {job.customer_name && job.job_card && `${job.customer_name} • `}
                               {job.job_date && `Date: ${new Date(job.job_date).toLocaleDateString()} • `}
                               {job.serial_number ? `SN: ${job.serial_number}` : `ID: ${job.id.substring(0, 8)}...`}
-                            </div>
-                          </div>
+              </div>
+              </div>
                           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
-                        </div>
+              </div>
                       </div>
                     ))}
                   </div>
