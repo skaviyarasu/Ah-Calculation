@@ -84,6 +84,13 @@ function formatCellValue(cell) {
   return `${ah}|${voltage}`;
 }
 
+function generateDemoRow(length) {
+  return Array.from({ length }, () => ({
+    ah: Math.round(4350 + Math.random() * 200),
+    v: Number((3.25 + Math.random() * 0.2).toFixed(3)),
+  }));
+}
+
 function sumAH(row) {
   return row.reduce((acc, cell) => acc + (isFiniteNumber(cell?.ah) ? cell.ah : 0), 0);
 }
@@ -832,6 +839,10 @@ export default function App() {
     setGrid(g);
   }
 
+  function randomize() {
+    setGrid(Array.from({ length: S }, () => generateDemoRow(P)));
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4">
@@ -1051,10 +1062,22 @@ export default function App() {
                 <li>Voltage accepts decimal values (comma or dot). Leave blank if a reading isn&apos;t available.</li>
                 <li>Use the export buttons to capture snapshots once the matrix is complete.</li>
               </ul>
+              <div>
+                <button
+                  onClick={randomize}
+                  className="mt-3 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                >
+                  Generate Demo Data
+                </button>
+              </div>
             </div>
             <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
           <div className="text-sm">AH Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
           <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
+          <div className="text-xs text-gray-600">
+            Avg V (Max row): <b>{isFiniteNumber(averageVoltages[rMax]) ? averageVoltages[rMax].toFixed(3) : "—"}</b>&nbsp;|&nbsp;
+            Avg V (Min row): <b>{isFiniteNumber(averageVoltages[rMin]) ? averageVoltages[rMin].toFixed(3) : "—"}</b>
+          </div>
           <div className="text-sm">
             Max voltage: <b>{isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "—"} V</b>
             {voltageExtremes.max.series !== null && (
@@ -1279,6 +1302,8 @@ export default function App() {
                             <div className="text-[10px] text-gray-500 mb-1">AH</div>
                             <input
                               className={`${baseClass}${highlightClass}${disabledClass}`}
+                              type="number"
+                              step="1"
                               value={isFiniteNumber(cell?.ah) ? cell.ah : ""}
                               onChange={(e) => handleCellChange(i, j, "ah", e.target.value)}
                               inputMode="numeric"
@@ -1288,6 +1313,8 @@ export default function App() {
                             <div className="text-[10px] text-gray-500 mt-2 mb-1">V</div>
                             <input
                               className={`${baseClass}${highlightClass}${disabledClass}`}
+                              type="number"
+                              step="any"
                               value={isFiniteNumber(cell?.v) ? cell.v : ""}
                               onChange={(e) => handleCellChange(i, j, "v", e.target.value)}
                               inputMode="decimal"
