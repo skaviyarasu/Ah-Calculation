@@ -15,7 +15,7 @@ export default function LoginGate({ children }) {
   const [submitting, setSubmitting] = useState(false);
 
   // Initialize Supabase authentication
-  useEffect(() => {
+useEffect(() => {
     // Check if Supabase is properly configured
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -47,7 +47,7 @@ export default function LoginGate({ children }) {
     });
 
     return () => subscription?.unsubscribe();
-  }, []);
+}, []);
 
   async function handleLogin(e) {
     e.preventDefault();
@@ -68,7 +68,7 @@ export default function LoginGate({ children }) {
   }
 
   async function handleRegister(e) {
-    e.preventDefault();
+e.preventDefault();
     if (!email.trim() || !password || !confirmPassword || !fullName.trim()) {
       alert('Please fill in all fields');
       return;
@@ -231,8 +231,8 @@ export default function LoginGate({ children }) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Confirm Password
                 </label>
-                <input
-                  type="password"
+<input
+type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -253,7 +253,7 @@ export default function LoginGate({ children }) {
             >
               {submitting ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
             </button>
-          </form>
+</form>
 
           {!isLogin && (
             <div className="text-center">
@@ -263,12 +263,12 @@ export default function LoginGate({ children }) {
             </div>
           )}
         </div>
-      </div>
-    );
-  }
+</div>
+);
+}
 
   // Render authenticated app with user info
-  return (
+return (
     <div className="min-h-screen bg-gray-50">
       {/* User Info Header - Integrated with app */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -287,8 +287,8 @@ export default function LoginGate({ children }) {
             </button>
           </div>
         </div>
-      </div>
-      {children}
-    </div>
-  );
+</div>
+{children}
+</div>
+);
 }

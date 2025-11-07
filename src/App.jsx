@@ -627,19 +627,23 @@ export default function App() {
   const spread = useMemo(() => (totalsAH[rMax] ?? 0) - (totalsAH[rMin] ?? 0), [totalsAH, rMax, rMin]);
 
   const voltageExtremes = useMemo(() => {
-    let max = { value: -Infinity, series: null, parallel: null };
-    let min = { value: Infinity, series: null, parallel: null };
-    grid.forEach((row, i) => {
-      row.forEach((cell, j) => {
-        if (isFiniteNumber(cell?.v)) {
-          if (cell.v > max.value) max = { value: cell.v, series: i, parallel: j };
-          if (cell.v < min.value) min = { value: cell.v, series: i, parallel: j };
-        }
-      });
+    let max = { value: -Infinity, series: null };
+    let min = { value: Infinity, series: null };
+
+    averageVoltages.forEach((avg, idx) => {
+      if (isFiniteNumber(avg)) {
+        if (avg > max.value) max = { value: avg, series: idx };
+        if (avg < min.value) min = { value: avg, series: idx };
+      }
     });
-    const diff = isFiniteNumber(max.value) && isFiniteNumber(min.value) ? max.value - min.value : NaN;
+
+    const diff =
+      isFiniteNumber(max.value) && isFiniteNumber(min.value)
+        ? max.value - min.value
+        : NaN;
+
     return { max, min, diff };
-  }, [grid]);
+  }, [averageVoltages]);
 
   const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
 
@@ -780,23 +784,23 @@ export default function App() {
         ["", ""],
         ["Voltage Analysis", ""],
         [
-          "Max Cell Voltage (V)",
+          "Max Avg Row Voltage (V)",
           isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "Not recorded"
         ],
         [
-          "Max Voltage Location",
+          "Max Voltage Row",
           voltageExtremes.max.series !== null
-            ? `S${voltageExtremes.max.series + 1} P${(voltageExtremes.max.parallel ?? 0) + 1}`
+            ? `S${voltageExtremes.max.series + 1}`
             : "Not recorded"
         ],
         [
-          "Min Cell Voltage (V)",
+          "Min Avg Row Voltage (V)",
           isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "Not recorded"
         ],
         [
-          "Min Voltage Location",
+          "Min Voltage Row",
           voltageExtremes.min.series !== null
-            ? `S${voltageExtremes.min.series + 1} P${(voltageExtremes.min.parallel ?? 0) + 1}`
+            ? `S${voltageExtremes.min.series + 1}`
             : "Not recorded"
         ],
         [
@@ -967,7 +971,7 @@ export default function App() {
             <label className="text-sm font-medium text-gray-700">
               Serial Number <span className="text-xs text-gray-500 font-normal">(Tracking ID)</span>
                 </label>
-            <input
+                <input
               type="text"
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value.toUpperCase())}
@@ -1063,12 +1067,12 @@ export default function App() {
                 <li>Use the export buttons to capture snapshots once the matrix is complete.</li>
               </ul>
               <div>
-                <button
+              <button
                   onClick={randomize}
                   className="mt-3 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
-                >
+              >
                   Generate Demo Data
-                </button>
+              </button>
               </div>
             </div>
             <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
@@ -1079,15 +1083,15 @@ export default function App() {
             Avg V (Min row): <b>{isFiniteNumber(averageVoltages[rMin]) ? averageVoltages[rMin].toFixed(3) : "—"}</b>
           </div>
           <div className="text-sm">
-            Max voltage: <b>{isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "—"} V</b>
+            Max avg row voltage: <b>{isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "—"} V</b>
             {voltageExtremes.max.series !== null && (
-              <span> (S{voltageExtremes.max.series + 1}P{(voltageExtremes.max.parallel ?? 0) + 1})</span>
+              <span> (S{voltageExtremes.max.series + 1})</span>
             )}
           </div>
           <div className="text-sm">
-            Min voltage: <b>{isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "—"} V</b>
+            Min avg row voltage: <b>{isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "—"} V</b>
             {voltageExtremes.min.series !== null && (
-              <span> (S{voltageExtremes.min.series + 1}P{(voltageExtremes.min.parallel ?? 0) + 1})</span>
+              <span> (S{voltageExtremes.min.series + 1})</span>
             )}
           </div>
           <div className="text-sm">
@@ -1137,7 +1141,7 @@ export default function App() {
                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {searchQuery && (
-                    <button
+              <button
                       onClick={() => {
                         setSearchQuery("");
                         setShowSearchResults(false);
@@ -1147,7 +1151,7 @@ export default function App() {
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
-                    </button>
+              </button>
                   )}
                 </div>
                 
@@ -1200,7 +1204,7 @@ export default function App() {
               {/* Retrieve Button */}
               <div className="flex flex-col gap-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2 opacity-0">Actions</label>
-                <button
+              <button
                   onClick={loadSavedJobs}
                   disabled={loading}
                   className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors text-sm font-medium whitespace-nowrap ${
@@ -1227,9 +1231,9 @@ export default function App() {
                     />
                   </svg>
                   {loading ? 'Retrieving...' : 'Refresh List'}
-                </button>
-              </div>
+              </button>
             </div>
+          </div>
 
             {/* Search Summary */}
             {searchQuery.trim() && (
@@ -1300,9 +1304,9 @@ export default function App() {
                         return (
                           <td key={j} className="px-2 py-2 align-top">
                             <div className="text-[10px] text-gray-500 mb-1">AH</div>
-                            <input
+                        <input
                               className={`${baseClass}${highlightClass}${disabledClass}`}
-                              type="number"
+                          type="number"
                               step="1"
                               value={isFiniteNumber(cell?.ah) ? cell.ah : ""}
                               onChange={(e) => handleCellChange(i, j, "ah", e.target.value)}
@@ -1311,17 +1315,17 @@ export default function App() {
                               title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
                             />
                             <div className="text-[10px] text-gray-500 mt-2 mb-1">V</div>
-                            <input
+                        <input
                               className={`${baseClass}${highlightClass}${disabledClass}`}
-                              type="number"
+                          type="number"
                               step="any"
                               value={isFiniteNumber(cell?.v) ? cell.v : ""}
                               onChange={(e) => handleCellChange(i, j, "v", e.target.value)}
                               inputMode="decimal"
                               disabled={!isEditable && currentJobId}
                               title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
-                            />
-                          </td>
+                        />
+                      </td>
                         );
                       })}
                       <td className="px-3 py-2 font-semibold">{isFiniteNumber(totalsAH[i]) ? Math.round(totalsAH[i]) : "—"}</td>
