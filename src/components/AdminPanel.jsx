@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { rbac, auth } from '../lib/supabase';
 import UserRegistration from './UserRegistration';
@@ -79,6 +79,7 @@ export default function AdminPanel() {
   };
 
   const refreshRolePermissions = async () => {
+    const previousScroll = typeof window !== 'undefined' ? window.scrollY : 0;
     setRolePermissionsLoading(true);
     try {
       const { permissions, catalog } = await rbac.getAllRoles();
@@ -88,8 +89,19 @@ export default function AdminPanel() {
       alert('Failed to load role permissions: ' + (error.message || 'Unknown error'));
     } finally {
       setRolePermissionsLoading(false);
+      restoreScrollPosition(previousScroll);
     }
   };
+
+  const restoreScrollPosition = useCallback((scrollY) => {
+    if (typeof window === 'undefined') return;
+    const safeY = Math.max(scrollY, 0);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: safeY, left: 0, behavior: 'auto' });
+      });
+    });
+  }, []);
 
   const updateUserStats = (usersData = []) => {
     const totalUsers = usersData.length;
@@ -104,17 +116,18 @@ export default function AdminPanel() {
   };
 
   const refreshUsersData = async () => {
+    const previousScroll = typeof window !== 'undefined' ? window.scrollY : 0;
     setUsersLoading(true);
     try {
       const usersData = await rbac.getAllUsersWithRoles();
       setUsers(usersData);
-      setExpandedUserId(null);
       updateUserStats(usersData);
     } catch (error) {
       console.error('Error loading users:', error);
       alert('Failed to load users: ' + (error.message || 'Unknown error'));
     } finally {
       setUsersLoading(false);
+      restoreScrollPosition(previousScroll);
     }
   };
 
