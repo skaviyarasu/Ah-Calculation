@@ -154,6 +154,20 @@ export default function AdminPanel() {
     });
   }, [users]);
 
+  const formatDateTime = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString();
+  };
+
+  const formatDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -296,9 +310,10 @@ export default function AdminPanel() {
 
                 {/* Table Header */}
                 <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">
-                  <div className="col-span-6">User Details</div>
-                  <div className="col-span-3">Roles</div>
-                  <div className="col-span-3 text-right">Actions</div>
+                  <div className="col-span-5">User Details</div>
+                  <div className="col-span-3">Last Sign-In</div>
+                  <div className="col-span-2">Roles</div>
+                  <div className="col-span-2 text-right">Actions</div>
                 </div>
 
                 {/* Users */}
@@ -317,10 +332,12 @@ export default function AdminPanel() {
                       const truncatedId = user.id ? `${user.id.substring(0, 8)}...${user.id.substring(user.id.length - 4)}` : '';
                       const isActive = !!user.last_sign_in_at;
                       const statusLabel = isActive ? 'Active' : 'Inactive';
+                      const lastSignInLabel = formatDateTime(user.last_sign_in_at) || 'Never signed in';
+                      const createdLabel = formatDate(user.created_at);
                       return (
                         <div key={user.id} className="px-6 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                            <div className="md:col-span-6 flex items-center gap-4">
+                            <div className="md:col-span-5 flex items-center gap-4">
                               <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold text-lg">
                                 {initials}
                               </div>
@@ -333,15 +350,25 @@ export default function AdminPanel() {
                                 </div>
                                 <div className="text-xs text-gray-600">{displayEmail}</div>
                                 {truncatedId && <div className="text-xs font-mono text-gray-400 mt-1">{truncatedId}</div>}
-                                {user.last_sign_in_at ? (
-                                  <div className="text-xs text-gray-400 mt-1">Last sign-in {new Date(user.last_sign_in_at).toLocaleDateString()}</div>
-                                ) : (
-                                  <div className="text-xs text-gray-400 mt-1">Never signed in</div>
+                                <div className="mt-2 text-xs text-gray-500 md:hidden">
+                                  Last sign-in: {lastSignInLabel}
+                                </div>
+                                {createdLabel && (
+                                  <div className="text-xs text-gray-400 mt-1 md:hidden">
+                                    Account created {createdLabel}
+                                  </div>
                                 )}
                               </div>
                             </div>
 
-                            <div className="md:col-span-3 flex flex-wrap gap-2">
+                            <div className="md:col-span-3">
+                              <div className="text-sm text-gray-700">{lastSignInLabel}</div>
+                              <div className="mt-1 text-xs text-gray-400">
+                                {createdLabel ? `Account created ${createdLabel}` : 'Creation date unavailable'}
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-2 flex flex-wrap gap-2">
                               {user.roles.length > 0 ? (
                                 user.roles.map((role) => (
                                   <span
