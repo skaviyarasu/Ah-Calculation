@@ -929,6 +929,15 @@ export default function SalesManagement() {
                       </button>
                     </div>
                     <div className="space-y-2">
+                      {estimateForm.items.length > 0 && (
+                        <div className="hidden md:grid grid-cols-12 gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          <span className="col-span-4">Item</span>
+                          <span className="col-span-2">Qty</span>
+                          <span className="col-span-2">Unit Price</span>
+                          <span className="col-span-2">Tax %</span>
+                          <span className="col-span-2 text-right">Line Total</span>
+                        </div>
+                      )}
                       {estimateForm.items.map((item, index) => (
                         <div key={index} className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-md">
                           <div className="col-span-4">
@@ -1114,6 +1123,15 @@ export default function SalesManagement() {
                       </button>
                     </div>
                     <div className="space-y-2">
+                      {invoiceForm.items.length > 0 && (
+                        <div className="hidden md:grid grid-cols-12 gap-2 px-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          <span className="col-span-4">Item</span>
+                          <span className="col-span-2">Qty</span>
+                          <span className="col-span-2">Unit Price</span>
+                          <span className="col-span-2">Tax %</span>
+                          <span className="col-span-2 text-right">Line Total</span>
+                        </div>
+                      )}
                       {invoiceForm.items.map((item, index) => (
                         <div key={index} className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-md">
                           <div className="col-span-4">
