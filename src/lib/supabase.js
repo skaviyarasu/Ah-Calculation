@@ -313,14 +313,42 @@ export const rbac = {
     return data || false
   },
 
-  // Get all roles (admin only)
+  // Get all role permissions and catalog metadata (admin only)
   async getAllRoles() {
+    const [permissionsResponse, catalogResponse] = await Promise.all([
+      supabase
+        .from('role_permissions')
+        .select('role, permission, resource, description')
+        .order('role')
+        .order('permission'),
+      supabase
+        .from('role_catalog')
+        .select('role, label, description, created_at, created_by')
+        .order('role')
+    ])
+
+    if (permissionsResponse.error) throw permissionsResponse.error
+    if (catalogResponse.error) throw catalogResponse.error
+
+    return {
+      permissions: permissionsResponse.data || [],
+      catalog: catalogResponse.data || []
+    }
+  },
+
+  async createRole(role, label, description = null) {
+    const payload = {
+      role,
+      label: label || role,
+      description: description || null
+    }
+
     const { data, error } = await supabase
-      .from('role_permissions')
-      .select('role, permission, resource, description')
-      .order('role')
-      .order('permission')
-    
+      .from('role_catalog')
+      .insert(payload)
+      .select()
+      .single()
+
     if (error) throw error
     return data
   },
