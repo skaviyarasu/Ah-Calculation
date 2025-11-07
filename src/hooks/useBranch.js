@@ -36,7 +36,24 @@ export function useBranch() {
       }
 
       setUserId(user.id)
-      const branchData = await organization.getUserBranches(user.id)
+      let branchData = await organization.getUserBranches(user.id)
+
+      if (!branchData || branchData.length === 0) {
+        try {
+          const allBranches = await organization.getBranches()
+          const defaultBranch = allBranches.find(branch => branch.is_default) || allBranches.find(branch => branch.code === 'MAIN') || allBranches[0] || null
+          if (defaultBranch) {
+            await organization.assignUserToBranch(user.id, defaultBranch.id, {
+              is_primary: true,
+              assignedBy: user.id
+            })
+            branchData = await organization.getUserBranches(user.id)
+          }
+        } catch (assignmentError) {
+          console.warn('Could not auto-assign branch:', assignmentError)
+        }
+      }
+
       setBranches(branchData)
 
       const storedBranchId = (() => {
