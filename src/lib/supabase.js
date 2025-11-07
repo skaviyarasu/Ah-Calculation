@@ -1220,10 +1220,14 @@ export const inventory = {
       .from('goods_receipts')
       .select(`
         *,
-        purchase_orders:purchase_order_id (
+        purchase_orders (
           id,
           order_number,
-          status
+          status,
+          inventory_suppliers (
+            id,
+            name
+          )
         ),
         inventory_locations!goods_receipts_location_id_fkey (
           id,
