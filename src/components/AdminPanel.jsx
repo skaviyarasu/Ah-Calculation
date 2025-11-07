@@ -1,13 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { rbac, auth, supabase } from '../lib/supabase';
+import { rbac, auth } from '../lib/supabase';
 import UserRegistration from './UserRegistration';
+import {
+  PERMISSION_MATRIX,
+  PERMISSION_COLUMNS,
+  ROLE_METADATA,
+  PERMISSION_CONFIG_KEYS,
+  makePermissionKey
+} from '../constants/rolePermissionMatrix';
 
 export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
-  const [permissions, setPermissions] = useState([]);
+  const [rolePermissions, setRolePermissions] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -16,6 +23,187 @@ export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', or 'register'
   const [userStats, setUserStats] = useState({ total: 0, admins: 0, regular: 0 });
   const [expandedUserId, setExpandedUserId] = useState(null);
+  const [selectedRoleKey, setSelectedRoleKey] = useState('admin');
+  const [rolePermissionsLoading, setRolePermissionsLoading] = useState(false);
+  const [permissionBusyKey, setPermissionBusyKey] = useState(null);
+  const [expandedPermissionRow, setExpandedPermissionRow] = useState(null);
+
+  const DEFAULT_ROLES = useMemo(() => ['admin', 'creator', 'verifier', 'user'], []);
+
+  const processRolePermissionRows = (rows = []) => {
+    const grouped = {};
+    rows.forEach((row) => {
+      if (!row) return;
+      const roleName = row.role || 'user';
+      const key = makePermissionKey(row.permission, row.resource);
+      if (!grouped[roleName]) grouped[roleName] = {};
+      grouped[roleName][key] = row;
+    });
+
+    const roleSet = new Set(DEFAULT_ROLES);
+    rows.forEach((row) => {
+      if (row?.role) roleSet.add(row.role);
+    });
+
+    const roleList = Array.from(roleSet).sort((a, b) => a.localeCompare(b));
+    const normalised = roleList.reduce((acc, role) => {
+      acc[role] = grouped[role] || {};
+      return acc;
+    }, {});
+
+    setRoles(roleList);
+    setRolePermissions(normalised);
+
+    setSelectedRoleKey((prev) => {
+      if (prev && roleList.includes(prev)) return prev;
+      if (roleList.includes('admin')) return 'admin';
+      return roleList[0] || 'admin';
+    });
+  };
+
+  const refreshRolePermissions = async () => {
+    setRolePermissionsLoading(true);
+    try {
+      const rows = await rbac.getAllRoles();
+      processRolePermissionRows(rows);
+    } catch (error) {
+      console.error('Error loading role permissions:', error);
+      alert('Failed to load role permissions: ' + (error.message || 'Unknown error'));
+    } finally {
+      setRolePermissionsLoading(false);
+    }
+  };
+
+  const TriStateCheckbox = ({ checked, indeterminate, onChange, disabled, title }) => {
+    const checkboxRef = useRef(null);
+    useEffect(() => {
+      if (checkboxRef.current) {
+        checkboxRef.current.indeterminate = indeterminate && !checked;
+      }
+    }, [indeterminate, checked]);
+
+    return (
+      <input
+        type="checkbox"
+        ref={checkboxRef}
+        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        title={title}
+      />
+    );
+  };
+
+  const dedupeEntries = (entries = []) => {
+    const map = new Map();
+    entries.forEach((entry) => {
+      if (!entry?.permission) return;
+      const key = makePermissionKey(entry.permission, entry.resource);
+      if (!map.has(key)) {
+        map.set(key, entry);
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  const selectedRolePermissions = rolePermissions[selectedRoleKey] || {};
+
+  const hasEntry = (entry) => {
+    if (!entry?.permission) return false;
+    return Boolean(selectedRolePermissions[makePermissionKey(entry.permission, entry.resource)]);
+  };
+
+  const getFullEntries = (row) => {
+    if (!row?.actions) return [];
+    if (Array.isArray(row.actions.full) && row.actions.full.length > 0) {
+      return row.actions.full;
+    }
+
+    const collected = [];
+    Object.entries(row.actions).forEach(([key, value]) => {
+      if (key === 'full' || !Array.isArray(value)) return;
+      value.forEach((entry) => {
+        if (!entry?.permission) return;
+        if (entry.includeInFull === false) return;
+        const entryKey = makePermissionKey(entry.permission, entry.resource);
+        if (!collected.find((item) => makePermissionKey(item.permission, item.resource) === entryKey)) {
+          collected.push(entry);
+        }
+      });
+    });
+    return collected;
+  };
+
+  const getEntriesForColumn = (row, columnKey) => {
+    if (!row?.actions) return [];
+    if (columnKey === 'full') {
+      return getFullEntries(row);
+    }
+    const value = row.actions[columnKey];
+    if (!Array.isArray(value)) return [];
+    return value;
+  };
+
+  const makeBusyKey = (entries = [], enable) => {
+    const keys = entries.map((entry) => makePermissionKey(entry.permission, entry.resource)).join('|');
+    return `${selectedRoleKey}:${enable ? 'grant' : 'revoke'}:${keys}`;
+  };
+
+  const handlePermissionUpdate = async (entries = [], enable) => {
+    const deduped = dedupeEntries(entries);
+    if (!deduped.length) return;
+    const busyKey = makeBusyKey(deduped, enable);
+    setPermissionBusyKey(busyKey);
+    try {
+      if (enable) {
+        await Promise.all(
+          deduped.map((entry) =>
+            rbac.grantRolePermission(selectedRoleKey, entry.permission, entry.resource, entry.description)
+          )
+        );
+      } else {
+        await Promise.all(
+          deduped.map((entry) => rbac.revokeRolePermission(selectedRoleKey, entry.permission, entry.resource))
+        );
+      }
+      await refreshRolePermissions();
+    } catch (error) {
+      console.error('Error updating permissions:', error);
+      alert('Failed to update permissions: ' + (error.message || 'Unknown error'));
+    } finally {
+      setPermissionBusyKey(null);
+    }
+  };
+
+  const permissionBusy = Boolean(permissionBusyKey);
+
+  const isColumnChecked = (row, columnKey) => {
+    const entries = getEntriesForColumn(row, columnKey);
+    if (!entries.length) return false;
+    return entries.every((entry) => hasEntry(entry));
+  };
+
+  const isColumnIndeterminate = (row, columnKey) => {
+    const entries = getEntriesForColumn(row, columnKey);
+    if (!entries.length) return false;
+    const someEnabled = entries.some((entry) => hasEntry(entry));
+    return someEnabled && !isColumnChecked(row, columnKey);
+  };
+
+  const activeCountForEntries = (entries = []) => entries.filter((entry) => hasEntry(entry)).length;
+
+  const unmappedPermissions = useMemo(() => {
+    const entries = Object.values(selectedRolePermissions || {});
+    return entries.filter(
+      (entry) => !PERMISSION_CONFIG_KEYS.has(makePermissionKey(entry.permission, entry.resource))
+    );
+  }, [selectedRolePermissions]);
+
+  const selectedRoleMeta = ROLE_METADATA[selectedRoleKey] || {
+    label: selectedRoleKey,
+    description: 'Configure module-level permissions for this role.'
+  };
 
   useEffect(() => {
     checkAdminAccess();
@@ -26,6 +214,10 @@ export default function AdminPanel() {
   useEffect(() => {
     console.log('AdminPanel active tab:', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    setExpandedPermissionRow(null);
+  }, [selectedRoleKey]);
 
   async function checkAdminAccess() {
     try {
@@ -49,21 +241,16 @@ export default function AdminPanel() {
 
   async function loadData() {
     try {
-      const [usersData, rolesData] = await Promise.all([
+      setRolePermissionsLoading(true);
+
+      const [usersData, rolePermissionRows] = await Promise.all([
         rbac.getAllUsersWithRoles(),
         rbac.getAllRoles()
       ]);
 
       setUsers(usersData);
       setExpandedUserId(null);
-      setRoles(rolesData);
-      
-      // Get permissions for both roles
-      const [adminPerms, userPerms] = await Promise.all([
-        rbac.getRolePermissions('admin'),
-        rbac.getRolePermissions('user')
-      ]);
-      setPermissions([...adminPerms, ...userPerms]);
+      processRolePermissionRows(rolePermissionRows);
 
       const totalUsers = usersData.length;
       const admins = usersData.filter(user => user.roles.includes('admin')).length;
@@ -77,6 +264,8 @@ export default function AdminPanel() {
     } catch (error) {
       console.error('Error loading admin data:', error);
       alert('Failed to load admin data: ' + (error.message || 'Unknown error'));
+    } finally {
+      setRolePermissionsLoading(false);
     }
   }
 
@@ -575,106 +764,209 @@ export default function AdminPanel() {
           {/* Role Permissions Tab */}
           {activeTab === 'roles' && (
             <div className="space-y-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">Role Permissions</h2>
-                
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Admin Permissions */}
+              <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-6">
+                <div className="grid gap-6 md:grid-cols-2">
                   <div>
-                    <h3 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
-                      <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">ADMIN</span>
-                      Admin Role
-                    </h3>
-                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
-                      {permissions.filter(p => p.role === 'admin').map((perm) => (
-                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
-                          <span className="text-green-600 mt-0.5">✓</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-800">{perm.permission}</span>
-                            {perm.resource && (
-                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
-                            )}
-                            {perm.description && (
-                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
-                            )}
-                          </div>
-                        </li>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Role Name</label>
+                    <select
+                      value={selectedRoleKey}
+                      onChange={(e) => setSelectedRoleKey(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      {roles.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_METADATA[role]?.label || role.charAt(0).toUpperCase() + role.slice(1)}
+                        </option>
                       ))}
-                    </ul>
+                    </select>
                   </div>
-
-                  {/* Creator Permissions */}
                   <div>
-                    <h3 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
-                      <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">CREATOR</span>
-                      Creator Role
-                    </h3>
-                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
-                      {permissions.filter(p => p.role === 'creator').map((perm) => (
-                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
-                          <span className="text-green-600 mt-0.5">✓</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-800">{perm.permission}</span>
-                            {perm.resource && (
-                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
-                            )}
-                            {perm.description && (
-                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* Verifier Permissions */}
-                  <div>
-                    <h3 className="font-semibold text-orange-800 mb-3 flex items-center gap-2">
-                      <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs">VERIFIER</span>
-                      Verifier Role
-                    </h3>
-                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
-                      {permissions.filter(p => p.role === 'verifier').map((perm) => (
-                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
-                          <span className="text-green-600 mt-0.5">✓</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-800">{perm.permission}</span>
-                            {perm.resource && (
-                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
-                            )}
-                            {perm.description && (
-                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* User Permissions */}
-                  <div>
-                    <h3 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">USER</span>
-                      Standard User Role
-                    </h3>
-                    <ul className="space-y-2 text-sm max-h-96 overflow-y-auto">
-                      {permissions.filter(p => p.role === 'user').map((perm) => (
-                        <li key={perm.id} className="flex items-start gap-2 bg-white p-2 rounded border">
-                          <span className="text-green-600 mt-0.5">✓</span>
-                          <div className="flex-1">
-                            <span className="font-medium text-gray-800">{perm.permission}</span>
-                            {perm.resource && (
-                              <span className="text-gray-500 ml-2">• {perm.resource}</span>
-                            )}
-                            {perm.description && (
-                              <div className="text-xs text-gray-500 mt-1">{perm.description}</div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={selectedRoleMeta.description || ''}
+                      readOnly
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-sm text-gray-700"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">Descriptions help administrators understand the intended scope for each role.</p>
                   </div>
                 </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+                  <div className="text-gray-600">
+                    Configure module, page, and functional access for <span className="font-semibold text-gray-800">{selectedRoleMeta.label || selectedRoleKey}</span>.
+                  </div>
+                  <button
+                    onClick={refreshRolePermissions}
+                    disabled={rolePermissionsLoading}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Refresh Permissions
+                  </button>
+                </div>
+
+                {rolePermissionsLoading ? (
+                  <div className="py-12 text-center text-sm text-gray-500">Loading permissions…</div>
+                ) : (
+                  <div className="space-y-6">
+                    {PERMISSION_MATRIX.map((module) => (
+                      <div key={module.module} className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="bg-gray-100 px-4 py-3 flex items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-sm font-semibold text-gray-700">{module.module}</h3>
+                            {module.description && <p className="text-xs text-gray-500 mt-1">{module.description}</p>}
+                          </div>
+                          <div className="text-xs text-gray-500">{module.rows.length} sections</div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-white">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Particulars</th>
+                                {PERMISSION_COLUMNS.map((column) => (
+                                  <th
+                                    key={`${module.module}-${column.key}`}
+                                    className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center"
+                                  >
+                                    {column.label}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+                              {module.rows.map((row) => {
+                                const rowKey = `${module.module}-${row.key}`;
+                                const othersEntries = getEntriesForColumn(row, 'others');
+                                const othersActive = activeCountForEntries(othersEntries);
+                                const isRowExpanded = expandedPermissionRow === rowKey;
+
+                                return (
+                                  <React.Fragment key={rowKey}>
+                                    <tr>
+                                      <td className="px-4 py-3 font-medium text-gray-800">{row.label}</td>
+                                      {PERMISSION_COLUMNS.map((column) => {
+                                        const entries = getEntriesForColumn(row, column.key);
+                                        const disabled = !entries.length || permissionBusy || rolePermissionsLoading;
+
+                                        if (column.key === 'others') {
+                                          return (
+                                            <td key={`${rowKey}-${column.key}`} className="px-3 py-3 text-center">
+                                              {entries.length === 0 ? (
+                                                <span className="text-gray-300">—</span>
+                                              ) : (
+                                                <button
+                                                  onClick={() => setExpandedPermissionRow(isRowExpanded ? null : rowKey)}
+                                                  className={`text-xs font-medium underline ${othersActive ? 'text-blue-600' : 'text-gray-600'} hover:text-blue-700`}
+                                                >
+                                                  {othersActive > 0 ? `${othersActive}/${entries.length} selected` : 'More Permissions'}
+                                                </button>
+                                              )}
+                                            </td>
+                                          );
+                                        }
+
+                                        if (entries.length === 0) {
+                                          return (
+                                            <td key={`${rowKey}-${column.key}`} className="px-3 py-3 text-center text-gray-300">—</td>
+                                          );
+                                        }
+
+                                        const checked = isColumnChecked(row, column.key);
+                                        const indeterminate = isColumnIndeterminate(row, column.key);
+                                        const title = entries.map((entry) => entry.label || entry.permission).join(', ');
+
+                                        return (
+                                          <td key={`${rowKey}-${column.key}`} className="px-3 py-3 text-center">
+                                            <TriStateCheckbox
+                                              checked={checked}
+                                              indeterminate={indeterminate}
+                                              onChange={(e) => handlePermissionUpdate(entries, e.target.checked)}
+                                              disabled={disabled}
+                                              title={title}
+                                            />
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+
+                                    {isRowExpanded && othersEntries.length > 0 && (
+                                      <tr className="bg-blue-50/80">
+                                        <td colSpan={PERMISSION_COLUMNS.length + 1} className="px-6 py-4">
+                                          <div className="space-y-3">
+                                            <div className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Additional Permissions</div>
+                                            <div className="space-y-3">
+                                              {othersEntries.map((entry) => {
+                                                const entryKey = makePermissionKey(entry.permission, entry.resource);
+                                                const entryChecked = hasEntry(entry);
+                                                return (
+                                                  <label key={entryKey} className="flex items-start gap-3">
+                                                    <input
+                                                      type="checkbox"
+                                                      className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                      checked={entryChecked}
+                                                      onChange={(e) => handlePermissionUpdate([entry], e.target.checked)}
+                                                      disabled={permissionBusy || rolePermissionsLoading}
+                                                    />
+                                                    <div>
+                                                      <div className="text-sm font-medium text-gray-800">{entry.label || entry.permission}</div>
+                                                      <div className="text-xs text-gray-500 mt-1">
+                                                        {entry.description || 'No description provided.'}
+                                                        {entry.resource && <span className="ml-1 text-[11px] uppercase text-gray-400">({entry.resource})</span>}
+                                                      </div>
+                                                    </div>
+                                                  </label>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {unmappedPermissions.length > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="text-yellow-500 mt-1">⚠️</div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-yellow-800">Unmapped Permissions</h4>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          These permissions exist for this role but are not linked to the matrix above. You can remove them or keep them for advanced scenarios.
+                        </p>
+                      </div>
+                    </div>
+                    <ul className="space-y-2 text-sm">
+                      {unmappedPermissions.map((entry) => {
+                        const entryKey = makePermissionKey(entry.permission, entry.resource);
+                        return (
+                          <li key={entryKey} className="flex items-start justify-between gap-3 bg-white border border-yellow-100 rounded-md p-3">
+                            <div>
+                              <div className="font-semibold text-gray-800">{entry.permission}</div>
+                              {entry.resource && <div className="text-xs text-gray-500">Resource: {entry.resource}</div>}
+                              {entry.description && <div className="text-xs text-gray-500 mt-1">{entry.description}</div>}
+                            </div>
+                            <button
+                              onClick={() => handlePermissionUpdate([entry], false)}
+                              className="text-xs text-red-600 hover:text-red-700"
+                              disabled={permissionBusy || rolePermissionsLoading}
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}

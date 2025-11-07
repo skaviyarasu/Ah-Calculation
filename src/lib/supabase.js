@@ -475,6 +475,40 @@ export const rbac = {
     return data
   },
 
+  async grantRolePermission(role, permission, resource = null, description = null) {
+    const payload = {
+      role,
+      permission,
+      resource,
+      description: description ?? null
+    }
+
+    const { error } = await supabase
+      .from('role_permissions')
+      .upsert(payload, { onConflict: 'role,permission,resource' })
+
+    if (error) throw error
+    return true
+  },
+
+  async revokeRolePermission(role, permission, resource = null) {
+    let query = supabase
+      .from('role_permissions')
+      .delete()
+      .eq('role', role)
+      .eq('permission', permission)
+
+    if (resource === null || resource === undefined) {
+      query = query.is('resource', null)
+    } else {
+      query = query.eq('resource', resource)
+    }
+
+    const { error } = await query
+    if (error) throw error
+    return true
+  },
+
   // Get all users (admin only) - via auth.users but we'll use a different approach
   async getAllUsers() {
     // Note: Direct access to auth.users requires service role key
