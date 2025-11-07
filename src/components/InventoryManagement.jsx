@@ -81,7 +81,16 @@ export default function InventoryManagement() {
     contact_name: '',
     email: '',
     phone: '',
+    mobile: '',
     tax_number: '',
+    gstin: '',
+    pan: '',
+    msme_number: '',
+    address: '',
+    city: '',
+    state: '',
+    postal_code: '',
+    country: 'India',
     notes: ''
   });
 
@@ -431,7 +440,16 @@ export default function InventoryManagement() {
         contact_name: '',
         email: '',
         phone: '',
+        mobile: '',
         tax_number: '',
+        gstin: '',
+        pan: '',
+        msme_number: '',
+        address: '',
+        city: '',
+        state: '',
+        postal_code: '',
+        country: 'India',
         notes: ''
       })
       if (currentBranch?.id) {
@@ -1127,8 +1145,26 @@ export default function InventoryManagement() {
                       <tr key={supplier.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-900 font-medium">{supplier.name}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{supplier.contact_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{supplier.phone || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {supplier.phone || supplier.mobile || '-'}
+                          {supplier.mobile && supplier.phone && (
+                            <div className="text-xs text-gray-400">Alt: {supplier.mobile}</div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-blue-600">{supplier.email || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {supplier.gstin || supplier.pan ? (
+                            <div className="space-y-1">
+                              {supplier.gstin && <div className="text-xs font-mono">GSTIN: {supplier.gstin}</div>}
+                              {supplier.pan && <div className="text-xs font-mono">PAN: {supplier.pan}</div>}
+                              {supplier.msme_number && <div className="text-xs font-mono">MSME: {supplier.msme_number}</div>}
+                              {supplier.payment_terms && <div className="text-xs text-gray-400">Terms: {supplier.payment_terms}</div>}
+                              {supplier.credit_limit != null && <div className="text-xs text-gray-400">Credit Limit: ₹{supplier.credit_limit}</div>}
+                            </div>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${supplier.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                             {supplier.status || 'active'}
@@ -1774,6 +1810,28 @@ export default function InventoryManagement() {
                       className="w-full p-2 border border-gray-300 rounded-md"
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={supplierForm.phone}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Mobile</label>
+                      <input
+                        type="tel"
+                        name="mobile"
+                        value={supplierForm.mobile}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input
@@ -1785,21 +1843,95 @@ export default function InventoryManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={supplierForm.phone}
-                      onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Tax Number</label>
                     <input
                       type="text"
                       name="tax_number"
                       value={supplierForm.tax_number}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
+                      <input
+                        type="text"
+                        name="gstin"
+                        value={supplierForm.gstin}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">PAN</label>
+                      <input
+                        type="text"
+                        name="pan"
+                        value={supplierForm.pan}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">MSME Number</label>
+                    <input
+                      type="text"
+                      name="msme_number"
+                      value={supplierForm.msme_number}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <textarea
+                      name="address"
+                      value={supplierForm.address}
+                      onChange={handleSupplierFormChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      rows="2"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                      <input
+                        type="text"
+                        name="city"
+                        value={supplierForm.city}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                      <input
+                        type="text"
+                        name="state"
+                        value={supplierForm.state}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+                      <input
+                        type="text"
+                        name="postal_code"
+                        value={supplierForm.postal_code}
+                        onChange={handleSupplierFormChange}
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                    <input
+                      type="text"
+                      name="country"
+                      value={supplierForm.country}
                       onChange={handleSupplierFormChange}
                       className="w-full p-2 border border-gray-300 rounded-md"
                     />
