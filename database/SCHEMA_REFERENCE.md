@@ -70,6 +70,32 @@ Stores individual cell capacity measurements in milliampere-hours (mAh).
 - `Users can update own cell capacities` (UPDATE)
 - `Users can delete own cell capacities` (DELETE)
 
+## 👥 Role & Permission Matrix
+
+### Roles
+
+| Role | Purpose |
+|------|---------|
+| `admin` | Full platform control including configuration, RBAC management, and all data access |
+| `accountant` | Day-to-day accounting operations (contacts, sales, purchases, banking, compliance) |
+| `creator` | Prepares AH Balancer jobs and supporting documentation |
+| `verifier` | Reviews/approves AH Balancer jobs and provides feedback |
+| `user` | Standard authenticated access with limited self-service capabilities |
+
+### Accounting Permission Families *(added via `13_add_accounting_permissions.sql`)*
+
+| Module | Key Permissions |
+|--------|-----------------|
+| Contacts | `view/create/edit` customers & vendors, assign owners, manage customer/vendor transactions |
+| Sales & Estimates | Manage estimates, invoices, and manual sales transactions (`view/create/edit/approve`, send, convert, record payments, write-offs) |
+| Purchases & Bills | Manage purchase orders and bills (`view/create/edit/approve`, convert PO→bill, record payments, apply credits) |
+| Accounts & Payments | Receivables/payables dashboards, record customer/vendor payments, manage credit/debit notes |
+| Banking | Maintain bank accounts, reconcile statements, record/import bank transactions |
+| Tax & Compliance | Manage tax rates, tax categories, and mark filings complete |
+| Financial Reports | Access P&L, sales, purchase, and cashflow reports |
+
+> **Tip:** The Admin Panel now exposes these permissions in a Zoho-style matrix so administrators can tailor access per role.
+
 ## 📊 Indexes
 
 1. **`battery_optimization_jobs_user_id_idx`** - User job queries

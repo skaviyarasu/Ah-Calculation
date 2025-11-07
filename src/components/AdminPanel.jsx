@@ -28,7 +28,7 @@ export default function AdminPanel() {
   const [permissionBusyKey, setPermissionBusyKey] = useState(null);
   const [expandedPermissionRow, setExpandedPermissionRow] = useState(null);
 
-  const DEFAULT_ROLES = useMemo(() => ['admin', 'creator', 'verifier', 'user'], []);
+  const DEFAULT_ROLES = useMemo(() => ['admin', 'accountant', 'creator', 'verifier', 'user'], []);
 
   const processRolePermissionRows = (rows = []) => {
     const grouped = {};
