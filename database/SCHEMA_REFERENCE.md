@@ -34,7 +34,7 @@ Primary table for storing battery optimization project metadata.
 | `updated_at` | TIMESTAMP | Auto-updated on changes |
 
 #### `battery_cell_capacities`
-Stores individual cell capacity measurements in milliampere-hours (mAh).
+Stores individual cell capacity (mAh) and voltage (V) measurements for each series/parallel position.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -43,6 +43,7 @@ Stores individual cell capacity measurements in milliampere-hours (mAh).
 | `series_index` | INTEGER | Series position (0-based) |
 | `parallel_index` | INTEGER | Parallel position (0-based) |
 | `capacity_mah` | NUMERIC | Cell capacity in milliampere-hours (mAh) |
+| `voltage` | NUMERIC | Recorded cell voltage in volts |
 | `created_at` | TIMESTAMP | Auto-generated timestamp |
 
 ## 🔐 Security Policies

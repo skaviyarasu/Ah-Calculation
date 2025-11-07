@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 import { db, auth, supabase, rbac } from "./lib/supabase";
@@ -15,25 +15,100 @@ import { useRole } from "./hooks/useRole";
  */
 
 // ---------- Utilities ----------
+const CELL_SEPARATOR = /\s*\|\s*|\s*@\s*|\s*\/\s*|\s*:\s*/;
+
+function makeEmptyCell() {
+  return { ah: NaN, v: NaN };
+}
+
+function isFiniteNumber(n) {
+  return typeof n === "number" && Number.isFinite(n);
+}
+
+function normalizeNumber(value) {
+  if (value === null || value === undefined) return NaN;
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  const normalized = String(value).trim().replace(/,/g, ".");
+  if (!normalized) return NaN;
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+function normalizeCell(cell) {
+  if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+    return {
+      ah: normalizeNumber(cell.ah),
+      v: normalizeNumber(cell.v),
+    };
+  }
+  const ah = normalizeNumber(cell);
+  return { ah, v: NaN };
+}
+
+function createEmptyGrid(S, P) {
+  return Array.from({ length: S }, () => Array.from({ length: P }, () => makeEmptyCell()));
+}
+
+function parseCellToken(token) {
+  const raw = String(token ?? "").trim();
+  if (!raw) return makeEmptyCell();
+  const parts = raw.split(CELL_SEPARATOR);
+  if (parts.length >= 2) {
+    return {
+      ah: normalizeNumber(parts[0]),
+      v: normalizeNumber(parts[1]),
+    };
+  }
+  return { ah: normalizeNumber(raw), v: NaN };
+}
+
 function parseCSV(text) {
   const rows = String(text || "")
     .trim()
     .split(/\r?\n/)
-    .map((r) => r.split(/[\t,; ]+/).filter(Boolean));
-  return rows
-    .filter((r) => r.length > 0)
-    .map((r) => r.map((v) => (v === "" ? NaN : Number(v))));
+    .filter((row) => row.trim() !== "");
+
+  return rows.map((row) =>
+    row
+      .split(/[\t,;]+|,\s*|\s{2,}/)
+      .filter((token) => token !== "")
+      .map(parseCellToken)
+  );
 }
 
-function sums(arr) {
-  return arr.reduce((a, b) => a + (isFinite(b) ? b : 0), 0);
+function formatCellValue(cell) {
+  const ah = isFiniteNumber(cell?.ah) ? cell.ah : "";
+  const voltage = isFiniteNumber(cell?.v) ? cell.v : "";
+  if (voltage === "") return `${ah}`;
+  if (ah === "") return `|${voltage}`;
+  return `${ah}|${voltage}`;
+}
+
+function sumAH(row) {
+  return row.reduce((acc, cell) => acc + (isFiniteNumber(cell?.ah) ? cell.ah : 0), 0);
+}
+
+function sumVoltage(row) {
+  return row.reduce((acc, cell) => acc + (isFiniteNumber(cell?.v) ? cell.v : 0), 0);
+}
+
+function averageVoltage(row) {
+  let total = 0;
+  let count = 0;
+  row.forEach((cell) => {
+    if (isFiniteNumber(cell?.v)) {
+      total += cell.v;
+      count += 1;
+    }
+  });
+  return count ? total / count : NaN;
 }
 
 function evaluateBestSingleSwap(grid) {
   const S = grid.length; if (!S) return null;
   const P = grid[0]?.length ?? 0; if (!P) return null;
 
-  const totals = grid.map((row) => sums(row));
+  const totals = grid.map((row) => sumAH(row));
   let rMax = 0, rMin = 0;
   totals.forEach((t, i) => {
     if (t > totals[rMax]) rMax = i;
@@ -45,14 +120,23 @@ function evaluateBestSingleSwap(grid) {
   let best = null;
   for (let a = 0; a < P; a++) {
     for (let b = 0; b < P; b++) {
-      const vMax = grid[rMax][a];
-      const vMin = grid[rMin][b];
-      if (!isFinite(vMax) || !isFinite(vMin)) continue;
-      if (a === b && Math.abs(vMax - vMin) < 1e-9) continue;
+      const cellFromMax = grid[rMax][a];
+      const cellFromMin = grid[rMin][b];
+      const ahFromMax = isFiniteNumber(cellFromMax?.ah) ? cellFromMax.ah : NaN;
+      const ahFromMin = isFiniteNumber(cellFromMin?.ah) ? cellFromMin.ah : NaN;
+      const vFromMax = isFiniteNumber(cellFromMax?.v) ? cellFromMax.v : NaN;
+      const vFromMin = isFiniteNumber(cellFromMin?.v) ? cellFromMin.v : NaN;
+
+      if (!isFiniteNumber(ahFromMax) || !isFiniteNumber(ahFromMin)) continue;
+      if (
+        a === b &&
+        Math.abs(ahFromMax - ahFromMin) < 1e-9 &&
+        Math.abs((isFiniteNumber(vFromMax) ? vFromMax : 0) - (isFiniteNumber(vFromMin) ? vFromMin : 0)) < 1e-9
+      ) continue;
 
       const newTotals = totals.slice();
-      newTotals[rMax] = totals[rMax] - vMax + vMin;
-      newTotals[rMin] = totals[rMin] - vMin + vMax;
+      newTotals[rMax] = totals[rMax] - (isFiniteNumber(ahFromMax) ? ahFromMax : 0) + (isFiniteNumber(ahFromMin) ? ahFromMin : 0);
+      newTotals[rMin] = totals[rMin] - (isFiniteNumber(ahFromMin) ? ahFromMin : 0) + (isFiniteNumber(ahFromMax) ? ahFromMax : 0);
       let maxT = -Infinity, minT = Infinity;
       for (let i = 0; i < S; i++) {
         if (newTotals[i] > maxT) maxT = newTotals[i];
@@ -61,14 +145,24 @@ function evaluateBestSingleSwap(grid) {
       const newSpread = maxT - minT;
       const improvement = beforeSpread - newSpread;
       const candidate = {
-        rMax, rMin, cFromMax: a, cFromMin: b,
-        valueFromMax: vMax, valueFromMin: vMin,
-        beforeSpread, afterSpread: newSpread, improvement,
+        rMax,
+        rMin,
+        cFromMax: a,
+        cFromMin: b,
+        valueFromMax: cellFromMax,
+        valueFromMin: cellFromMin,
+        beforeSpread,
+        afterSpread: newSpread,
+        improvement,
       };
       if (!best) best = candidate; else {
         const s1 = [candidate.improvement, -candidate.afterSpread, -Math.abs(newTotals[rMax] - newTotals[rMin])];
-        const baseBestMax = totals[rMax] - best.valueFromMax + best.valueFromMin;
-        const baseBestMin = totals[rMin] - best.valueFromMin + best.valueFromMax;
+        const baseBestMax = totals[rMax]
+          - (isFiniteNumber(best.valueFromMax?.ah) ? best.valueFromMax.ah : 0)
+          + (isFiniteNumber(best.valueFromMin?.ah) ? best.valueFromMin.ah : 0);
+        const baseBestMin = totals[rMin]
+          - (isFiniteNumber(best.valueFromMin?.ah) ? best.valueFromMin.ah : 0)
+          + (isFiniteNumber(best.valueFromMax?.ah) ? best.valueFromMax.ah : 0);
         const s2 = [best.improvement, -best.afterSpread, -Math.abs(baseBestMax - baseBestMin)];
         if (s1[0] > s2[0] || (s1[0] === s2[0] && (s1[1] > s2[1] || (s1[1] === s2[1] && s1[2] > s2[2])))) best = candidate;
       }
@@ -78,7 +172,7 @@ function evaluateBestSingleSwap(grid) {
 }
 
 function applySwap(grid, swap) {
-  const out = grid.map((r) => r.slice());
+  const out = grid.map((row) => row.map((cell) => ({ ...cell })));
   const tmp = out[swap.rMax][swap.cFromMax];
   out[swap.rMax][swap.cFromMax] = out[swap.rMin][swap.cFromMin];
   out[swap.rMin][swap.cFromMin] = tmp;
@@ -86,7 +180,10 @@ function applySwap(grid, swap) {
 }
 
 // Build the current visible table as an array-of-arrays
-function buildTableAOA(grid, S, P, totals, metadata = null) {
+function buildTableAOA(grid, S, P, stats, metadata = null) {
+  const totalsAH = stats?.totalsAH ?? [];
+  const totalsVoltage = stats?.totalsVoltage ?? [];
+  const averageVoltages = stats?.averageVoltages ?? [];
   const aoa = [];
   
   // Add metadata header if provided
@@ -104,14 +201,24 @@ function buildTableAOA(grid, S, P, totals, metadata = null) {
   }
   
   // Add table header
-  const header = ["Series/Parallel", ...Array.from({ length: P }, (_, j) => `P${j + 1}`), "Total (mAh)"];
+  const header = [
+    "Series/Parallel",
+    ...Array.from({ length: P }, (_, j) => `P${j + 1}`),
+    "Total AH",
+    "Avg V",
+    "Total V",
+  ];
   aoa.push(header);
   
   // Add data rows
   for (let i = 0; i < S; i++) {
     const row = [`S${i + 1}`];
-    for (let j = 0; j < P; j++) row.push(isFinite(grid[i]?.[j]) ? grid[i][j] : "");
-    row.push(isFinite(totals[i]) ? Math.round(totals[i]) : "");
+    for (let j = 0; j < P; j++) {
+      row.push(formatCellValue(grid[i]?.[j]));
+    }
+    row.push(isFiniteNumber(totalsAH[i]) ? Math.round(totalsAH[i]) : "");
+    row.push(isFiniteNumber(averageVoltages[i]) ? averageVoltages[i].toFixed(3) : "");
+    row.push(isFiniteNumber(totalsVoltage[i]) ? totalsVoltage[i].toFixed(3) : "");
     aoa.push(row);
   }
   return aoa;
@@ -122,8 +229,7 @@ export default function App() {
   const [S, setS] = useState(13);
   const [P, setP] = useState(7);
   const [tolerance, setTolerance] = useState(20); // mAh
-  const [grid, setGrid] = useState(() => Array.from({ length: 13 }, () => Array.from({ length: 7 }, () => NaN)));
-  const [pasteText, setPasteText] = useState("");
+  const [grid, setGrid] = useState(() => createEmptyGrid(13, 7));
   const tableRef = useRef(null);
 
   // Role-based access control
@@ -153,7 +259,11 @@ export default function App() {
 
   // Ensure grid matches SxP
   useEffect(() => {
-    setGrid((g) => Array.from({ length: S }, (_, i) => Array.from({ length: P }, (_, j) => (g[i]?.[j] ?? NaN))));
+    setGrid((prev) =>
+      Array.from({ length: S }, (_, i) =>
+        Array.from({ length: P }, (_, j) => normalizeCell(prev[i]?.[j]))
+      )
+    );
   }, [S, P]);
 
   // Load user's saved jobs on mount and check roles
@@ -358,12 +468,17 @@ export default function App() {
       
       // Reconstruct grid from cell data
       const newGrid = Array.from({ length: job.series_count || 13 }, () => 
-        Array.from({ length: job.parallel_count || 7 }, () => NaN)
+        Array.from({ length: job.parallel_count || 7 }, () => makeEmptyCell())
       );
       
       cellData.forEach(cell => {
         if (newGrid[cell.series_index] && newGrid[cell.series_index][cell.parallel_index] !== undefined) {
-          newGrid[cell.series_index][cell.parallel_index] = parseFloat(cell.capacity_mah);
+          const ahValue = normalizeNumber(cell.capacity_mah);
+          const voltageValue = normalizeNumber(cell.voltage);
+          newGrid[cell.series_index][cell.parallel_index] = {
+            ah: isFiniteNumber(ahValue) ? ahValue : NaN,
+            v: isFiniteNumber(voltageValue) ? voltageValue : NaN,
+          };
         }
       });
 
@@ -401,7 +516,7 @@ export default function App() {
         setJobCard("");
         setJobDate(new Date().toISOString().split('T')[0]);
         setBatterySpec("");
-        setGrid(Array.from({ length: S }, () => Array.from({ length: P }, () => NaN)));
+        setGrid(createEmptyGrid(S, P));
       }
       await loadSavedJobs();
       alert('Job deleted successfully!');
@@ -419,7 +534,7 @@ export default function App() {
       setJobCard("");
       setJobDate(new Date().toISOString().split('T')[0]);
       setBatterySpec("");
-      setGrid(Array.from({ length: S }, () => Array.from({ length: P }, () => NaN)));
+      setGrid(createEmptyGrid(S, P));
       setCurrentJobStatus('draft');
       setVerificationNotes("");
       setVerificationNotesInput("");
@@ -496,10 +611,28 @@ export default function App() {
     return currentJobStatus === 'draft' || currentJobStatus === 'needs_modification';
   }, [currentJobId, currentJobStatus, isCreator, isAdmin]);
 
-  const totals = useMemo(() => grid.map((r) => sums(r)), [grid]);
-  const rMax = useMemo(() => totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0), [totals]);
-  const rMin = useMemo(() => totals.reduce((a, t, i) => (t < totals[a] ? i : a), 0), [totals]);
-  const spread = useMemo(() => (totals[rMax] ?? 0) - (totals[rMin] ?? 0), [totals, rMax, rMin]);
+  const totalsAH = useMemo(() => grid.map((row) => sumAH(row)), [grid]);
+  const totalsVoltage = useMemo(() => grid.map((row) => sumVoltage(row)), [grid]);
+  const averageVoltages = useMemo(() => grid.map((row) => averageVoltage(row)), [grid]);
+
+  const rMax = useMemo(() => totalsAH.reduce((a, t, i) => (t > totalsAH[a] ? i : a), 0), [totalsAH]);
+  const rMin = useMemo(() => totalsAH.reduce((a, t, i) => (t < totalsAH[a] ? i : a), 0), [totalsAH]);
+  const spread = useMemo(() => (totalsAH[rMax] ?? 0) - (totalsAH[rMin] ?? 0), [totalsAH, rMax, rMin]);
+
+  const voltageExtremes = useMemo(() => {
+    let max = { value: -Infinity, series: null, parallel: null };
+    let min = { value: Infinity, series: null, parallel: null };
+    grid.forEach((row, i) => {
+      row.forEach((cell, j) => {
+        if (isFiniteNumber(cell?.v)) {
+          if (cell.v > max.value) max = { value: cell.v, series: i, parallel: j };
+          if (cell.v < min.value) min = { value: cell.v, series: i, parallel: j };
+        }
+      });
+    });
+    const diff = isFiniteNumber(max.value) && isFiniteNumber(min.value) ? max.value - min.value : NaN;
+    return { max, min, diff };
+  }, [grid]);
 
   const suggestion = useMemo(() => evaluateBestSingleSwap(grid), [grid]);
 
@@ -530,36 +663,33 @@ export default function App() {
     });
   }, [savedJobs, searchQuery]);
 
-  function handleCellChange(i, j, v) {
+  function handleCellChange(seriesIndex, parallelIndex, field, value) {
     if (!isEditable && currentJobId) {
       return; // Prevent editing if job is not editable
     }
-    const n = String(v).trim() === "" ? NaN : Number(v);
-    setGrid((g) => {
-      const gg = g.map((r) => r.slice());
-      gg[i][j] = isFinite(n) ? n : NaN;
-      return gg;
+    setGrid((prev) => {
+      return prev.map((row, i) =>
+        row.map((cell, j) => {
+          if (i !== seriesIndex || j !== parallelIndex) {
+            return normalizeCell(cell);
+          }
+          const nextCell = normalizeCell(cell);
+          const numeric = normalizeNumber(value);
+          if (field === "ah") {
+            nextCell.ah = isFiniteNumber(numeric) ? numeric : NaN;
+          } else if (field === "v") {
+            nextCell.v = isFiniteNumber(numeric) ? numeric : NaN;
+          }
+          return nextCell;
+        })
+      );
     });
-  }
-
-  function loadFromPaste() {
-    const m = parseCSV(pasteText);
-    if (!m.length) return;
-    setS(m.length);
-    setP(Math.max(...m.map((r) => r.length)));
-    const maxP = Math.max(...m.map((x) => x.length));
-    const norm = m.map((r) => {
-      const rr = r.slice();
-      while (rr.length < maxP) rr.push(NaN);
-      return rr;
-    });
-    setGrid(norm);
   }
 
   function exportCSV() {
     try {
       const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-      const aoa = buildTableAOA(grid, S, P, totals, metadata);
+      const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
       const csv = aoa.map((row) => row.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -579,7 +709,7 @@ export default function App() {
 
   function copyTableCSV() {
     const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-    const aoa = buildTableAOA(grid, S, P, totals, metadata);
+    const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
     const text = aoa.map((row) => row.join(",")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as CSV."));
     else {
@@ -590,7 +720,7 @@ export default function App() {
 
   function copyTableTSV() {
     const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-    const aoa = buildTableAOA(grid, S, P, totals, metadata);
+    const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
     const text = aoa.map((row) => row.join("\t")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as TSV."));
     else {
@@ -603,17 +733,17 @@ export default function App() {
     try {
       // Always use grid data for accurate values (DOM table can't read input values properly)
       const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-      const aoa = buildTableAOA(grid, S, P, totals, metadata);
+      const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
       const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, wsBefore, "Report");
 
       // Summary sheet with enhanced statistics
-      const rMx = totals.reduce((a, t, i) => (t > totals[a] ? i : a), 0);
-      const rMn = totals.reduce((a, t, i) => (t < totals[a] ? i : a), 0);
-      const spreadVal = (totals[rMx] ?? 0) - (totals[rMn] ?? 0);
-      const avgCapacity = totals.length > 0 ? totals.reduce((a, b) => a + b, 0) / totals.length : 0;
-      const totalCapacity = totals.reduce((a, b) => a + b, 0);
+      const rMx = totalsAH.reduce((a, t, i) => (t > totalsAH[a] ? i : a), 0);
+      const rMn = totalsAH.reduce((a, t, i) => (t < totalsAH[a] ? i : a), 0);
+      const spreadVal = (totalsAH[rMx] ?? 0) - (totalsAH[rMn] ?? 0);
+      const avgCapacity = totalsAH.length > 0 ? totalsAH.reduce((a, b) => a + b, 0) / totalsAH.length : 0;
+      const totalCapacity = totalsAH.reduce((a, b) => a + b, 0);
       
       const wsSummary = XLSX.utils.aoa_to_sheet([
         ["AH Balancer - Job Summary", ""],
@@ -635,11 +765,37 @@ export default function App() {
         ["Total Capacity (mAh)", Math.round(totalCapacity)],
         ["Average Row Capacity (mAh)", Math.round(avgCapacity)],
         ["Max Row (S#)", rMx + 1],
-        ["Max Row Capacity (mAh)", Math.round(totals[rMx] ?? 0)],
+        ["Max Row Capacity (mAh)", Math.round(totalsAH[rMx] ?? 0)],
         ["Min Row (S#)", rMn + 1],
-        ["Min Row Capacity (mAh)", Math.round(totals[rMn] ?? 0)],
+        ["Min Row Capacity (mAh)", Math.round(totalsAH[rMn] ?? 0)],
         ["Current Spread (mAh)", Math.round(spreadVal)],
         ["Balance Status", spreadVal <= tolerance ? "✓ Within Tolerance" : "⚠ Needs Optimization"],
+        ["", ""],
+        ["Voltage Analysis", ""],
+        [
+          "Max Cell Voltage (V)",
+          isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "Not recorded"
+        ],
+        [
+          "Max Voltage Location",
+          voltageExtremes.max.series !== null
+            ? `S${voltageExtremes.max.series + 1} P${(voltageExtremes.max.parallel ?? 0) + 1}`
+            : "Not recorded"
+        ],
+        [
+          "Min Cell Voltage (V)",
+          isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "Not recorded"
+        ],
+        [
+          "Min Voltage Location",
+          voltageExtremes.min.series !== null
+            ? `S${voltageExtremes.min.series + 1} P${(voltageExtremes.min.parallel ?? 0) + 1}`
+            : "Not recorded"
+        ],
+        [
+          "Voltage Spread (V)",
+          isFiniteNumber(voltageExtremes.diff) ? voltageExtremes.diff.toFixed(3) : "Not recorded"
+        ],
       ]);
       XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
@@ -657,11 +813,6 @@ export default function App() {
       console.error(e);
       alert("Excel export failed. Try the Copy buttons to transfer data, or ensure 'xlsx' is installed.");
     }
-  }
-
-  function randomize() {
-    const g = Array.from({ length: S }, () => Array.from({ length: P }, () => Math.round(4350 + Math.random() * 200)));
-    setGrid(g);
   }
 
   function applySuggestedSwap() {
@@ -800,7 +951,7 @@ export default function App() {
                 </p>
               </div>
             )}
-            <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid md:grid-cols-2 gap-4 items-end">
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">
               Serial Number <span className="text-xs text-gray-500 font-normal">(Tracking ID)</span>
@@ -890,17 +1041,35 @@ export default function App() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Paste CSV / TSV (auto-detect)</label>
-              <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={6} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder={"4350,4389,4472\n4430,4451,4403"} />
-              <div className="flex gap-2">
-                <button onClick={loadFromPaste} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors">Load from Paste</button>
-                <button onClick={randomize} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md transition-colors">Generate Demo Data</button>
-              </div>
-              </div>
+            <div className="space-y-3 p-4 bg-white border rounded-lg">
+              <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Manual Entry Workflow</h3>
+              <p className="text-sm text-gray-600">
+                Enter amp-hour and voltage values directly in the grid below. Each cell now captures both measurements—no file import is required.
+              </p>
+              <ul className="list-disc ml-5 text-xs text-gray-500 space-y-1">
+                <li>Type AH in the first field and Voltage in the second field for every parallel slot.</li>
+                <li>Voltage accepts decimal values (comma or dot). Leave blank if a reading isn&apos;t available.</li>
+                <li>Use the export buttons to capture snapshots once the matrix is complete.</li>
+              </ul>
+            </div>
             <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
-          <div className="text-sm">Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
+          <div className="text-sm">AH Spread (max - min): <b>{isFinite(spread) ? Math.round(spread) : "—"} mAh</b></div>
           <div className="text-sm">Max row: <b>S{(rMax + 1) || "—"}</b> | Min row: <b>S{(rMin + 1) || "—"}</b></div>
+          <div className="text-sm">
+            Max voltage: <b>{isFiniteNumber(voltageExtremes.max.value) ? voltageExtremes.max.value.toFixed(3) : "—"} V</b>
+            {voltageExtremes.max.series !== null && (
+              <span> (S{voltageExtremes.max.series + 1}P{(voltageExtremes.max.parallel ?? 0) + 1})</span>
+            )}
+          </div>
+          <div className="text-sm">
+            Min voltage: <b>{isFiniteNumber(voltageExtremes.min.value) ? voltageExtremes.min.value.toFixed(3) : "—"} V</b>
+            {voltageExtremes.min.series !== null && (
+              <span> (S{voltageExtremes.min.series + 1}P{(voltageExtremes.min.parallel ?? 0) + 1})</span>
+            )}
+          </div>
+          <div className="text-sm">
+            Voltage spread: <b>{isFiniteNumber(voltageExtremes.diff) ? voltageExtremes.diff.toFixed(3) : "—"} V</b>
+          </div>
           {suggestion ? (
             <div className="text-sm">
               Suggested swap: <b>S{suggestion.rMax + 1}:P{suggestion.cFromMax + 1}</b> ↔ <b>S{suggestion.rMin + 1}:P{suggestion.cFromMin + 1}</b>
@@ -1087,7 +1256,9 @@ export default function App() {
                     {Array.from({ length: P }).map((_, j) => (
                       <th key={j} className="px-3 py-2">P{j + 1}</th>
                     ))}
-                    <th className="px-3 py-2">Total (mAh)</th>
+                    <th className="px-3 py-2">Total AH</th>
+                    <th className="px-3 py-2">Avg V</th>
+                    <th className="px-3 py-2">Total V</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1097,24 +1268,38 @@ export default function App() {
                     return (
                       <tr key={i} className={`${isMax ? "bg-red-50" : isMin ? "bg-green-50" : ""}`}>
                         <td className="px-3 py-2 font-medium sticky left-0 bg-white z-10">S{i + 1}</td>
-                      {row.map((v, j) => {
+                      {row.map((cell, j) => {
                         const highlightSwapFrom = suggestion && i === suggestion.rMax && j === suggestion.cFromMax;
                         const highlightSwapTo = suggestion && i === suggestion.rMin && j === suggestion.cFromMin;
-                        const common = "px-3 py-1 border rounded-xl w-24";
+                        const baseClass = "px-3 py-1 border rounded-xl w-24";
+                        const highlightClass = `${highlightSwapFrom ? " ring-2 ring-yellow-400" : ""}${highlightSwapTo ? " ring-2 ring-blue-400" : ""}`;
+                        const disabledClass = !isEditable && currentJobId ? ' bg-gray-100 cursor-not-allowed' : '';
                         return (
-                          <td key={j} className="px-2 py-2">
-                        <input
-                              className={`${common} ${highlightSwapFrom ? "ring-2 ring-yellow-400" : ""} ${highlightSwapTo ? "ring-2 ring-blue-400" : ""} ${!isEditable && currentJobId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                              value={isFinite(v) ? v : ""}
-                              onChange={(e) => handleCellChange(i, j, e.target.value)}
+                          <td key={j} className="px-2 py-2 align-top">
+                            <div className="text-[10px] text-gray-500 mb-1">AH</div>
+                            <input
+                              className={`${baseClass}${highlightClass}${disabledClass}`}
+                              value={isFiniteNumber(cell?.ah) ? cell.ah : ""}
+                              onChange={(e) => handleCellChange(i, j, "ah", e.target.value)}
                               inputMode="numeric"
                               disabled={!isEditable && currentJobId}
                               title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
-                        />
-                      </td>
+                            />
+                            <div className="text-[10px] text-gray-500 mt-2 mb-1">V</div>
+                            <input
+                              className={`${baseClass}${highlightClass}${disabledClass}`}
+                              value={isFiniteNumber(cell?.v) ? cell.v : ""}
+                              onChange={(e) => handleCellChange(i, j, "v", e.target.value)}
+                              inputMode="decimal"
+                              disabled={!isEditable && currentJobId}
+                              title={!isEditable && currentJobId ? 'Job is not editable in current status' : ''}
+                            />
+                          </td>
                         );
                       })}
-                      <td className="px-3 py-2 font-semibold">{isFinite(totals[i]) ? Math.round(totals[i]) : "—"}</td>
+                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(totalsAH[i]) ? Math.round(totalsAH[i]) : "—"}</td>
+                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(averageVoltages[i]) ? averageVoltages[i].toFixed(3) : "—"}</td>
+                      <td className="px-3 py-2 font-semibold">{isFiniteNumber(totalsVoltage[i]) ? totalsVoltage[i].toFixed(3) : "—"}</td>
                     </tr>
                   );
                 })}
@@ -1172,7 +1357,7 @@ export default function App() {
           <div className="text-xs text-gray-500">
             Tips:
             <ul className="list-disc ml-5 space-y-1 mt-1">
-              <li>Paste a 13×7 matrix (or change S/P first) and click <b>Load from Paste</b>.</li>
+              <li>Enter AH and Voltage for every cell manually; leave blank when you don’t have a reading.</li>
               <li>Yellow ring = cell to <b>swap out</b> from the current <b>max</b> row; Blue ring = cell to <b>swap in</b> to the current <b>min</b> row.</li>
               <li>Click <b>Apply Suggested Swap</b> to mutate the grid; re-run until spread ≤ tolerance using <b>Iterate to Tolerance</b>.</li>
               <li>Fill in job information and click <b>Save Job</b> to store your calculations in the database.</li>
@@ -1188,26 +1373,26 @@ export default function App() {
 (function runSelfTests(){
   try {
     // sums tests
-    console.assert(sums([1,2,3]) === 6, "sums basic");
-    console.assert(sums([NaN, 5, NaN]) === 5, "sums ignores NaN");
+    console.assert(sumAH([{ah: 1, v: 3.2}, {ah: 2, v: 3.3}, {ah: 3, v: 3.4}]) === 6, "sumAH basic");
+    console.assert(sumAH([{ah: NaN, v: 3.2}, {ah: 5, v: NaN}, {ah: NaN, v: 3.4}]) === 5, "sumAH ignores NaN");
 
     // parseCSV tests
     const parsed = parseCSV("1,2,3\n4 5 6\n7\t8\t9");
     console.assert(parsed.length === 3 && parsed[0].length === 3, "parseCSV basic");
 
     // evaluateBestSingleSwap sanity
-    const g1 = [[1,2],[3,4]]; // totals: [3,7] spread 4
+    const g1 = [[{ ah: 1, v: 3.2 }, { ah: 2, v: 3.3 }], [{ ah: 3, v: 3.4 }, { ah: 4, v: 3.5 }]]; // totals: [3,7] spread 4
     const s1 = evaluateBestSingleSwap(g1);
     console.assert(s1 && typeof s1.improvement === 'number', "swap suggestion returns object");
 
     // swap application reduces or keeps spread
-    const spreadBefore = Math.max(...g1.map(sums)) - Math.min(...g1.map(sums));
+    const spreadBefore = Math.max(...g1.map((row) => sumAH(row))) - Math.min(...g1.map((row) => sumAH(row)));
     const g1b = applySwap(g1, s1);
-    const spreadAfter = Math.max(...g1b.map(sums)) - Math.min(...g1b.map(sums));
+    const spreadAfter = Math.max(...g1b.map((row) => sumAH(row))) - Math.min(...g1b.map((row) => sumAH(row)));
     console.assert(spreadAfter <= spreadBefore, "swap does not worsen spread");
 
     // newline join correctness for CSV/TSV
-    const aoa = [["A","B"],[1,2]];
+    const aoa = [["A","B"],[{ah: 1, v: 3.2}, {ah: 2, v: 3.3}]];
     const csvText = aoa.map((r)=>r.join(",")).join("\n");
     const tsvText = aoa.map((r)=>r.join("\t")).join("\n");
     console.assert(csvText.includes("\n") && tsvText.includes("\n"), "newline joins are correct");

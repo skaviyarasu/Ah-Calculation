@@ -107,12 +107,17 @@ export const db = {
     const cellDataArray = []
     gridData.forEach((row, seriesIndex) => {
       row.forEach((value, parallelIndex) => {
-        if (isFinite(value)) {
+        const cell = (value && typeof value === 'object') ? value : { ah: value }
+        const capacity = Number.isFinite(cell?.ah) ? cell.ah : null
+        const voltage = Number.isFinite(cell?.v) ? cell.v : null
+
+        if (capacity !== null) {
           cellDataArray.push({
             optimization_job_id: jobId,
             series_index: seriesIndex,
             parallel_index: parallelIndex,
-            capacity_mah: value
+            capacity_mah: capacity,
+            voltage: voltage
           })
         }
       })

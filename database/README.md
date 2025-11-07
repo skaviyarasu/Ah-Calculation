@@ -17,6 +17,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`11_create_accounting_system.sql`** - Comprehensive accounting system (invoicing, purchases, payments, banking, contacts, tax management)
 - **`12_create_user_directory.sql`** - Admin-only function to list Supabase auth users (id, name, email, last sign-in) for the Admin Panel
 - **`13_add_accounting_permissions.sql`** - Seeds role permissions for accounting modules and recognises the new accountant role in RBAC helpers
+- **`14_add_voltage_to_cell_capacities.sql`** - Adds a voltage column so AH balancer jobs can store per-cell voltage readings
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -35,6 +36,7 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`11_create_accounting_system.sql`** - Add comprehensive accounting system (run this to enable invoicing, purchases, payments, banking, contacts, and tax management)
 - **`12_create_user_directory.sql`** - Adds `admin_get_all_users()` RPC so the Admin Panel can display user names and emails
 - **`13_add_accounting_permissions.sql`** - Adds default permissions for contacts, sales, purchases, banking, and tax modules and updates role precedence (admin > accountant > creator > verifier > user)
+- **`14_add_voltage_to_cell_capacities.sql`** - Adds a `voltage` column to `battery_cell_capacities` for storing cell voltage measurements alongside AH
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
