@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { accounting, auth } from '../lib/supabase';
 import { useRole } from '../hooks/useRole';
@@ -10,6 +10,7 @@ export default function ContactsModule() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
+  const [error, setError] = useState(null);
 
   const { canViewInventory } = useRole();
 
@@ -44,14 +45,7 @@ export default function ContactsModule() {
     status: 'active'
   });
 
-  useEffect(() => {
-    if (canViewInventory) {
-      loadData();
-    }
-  }, [canViewInventory, activeTab]);
-
-  async function loadData() {
-    setLoading(true);
+  const loadContacts = useCallback(async () => {
     try {
       const contactsData = await accounting.getAllContacts({
         contact_type: activeTab === 'customers' ? 'customer' : 'vendor',
@@ -60,11 +54,34 @@ export default function ContactsModule() {
       setContacts(contactsData || []);
     } catch (error) {
       console.error('Error loading contacts:', error);
-      alert('Failed to load contacts: ' + error.message);
-    } finally {
-      setLoading(false);
+      setError(error.message || 'Failed to load contacts');
     }
-  }
+  }, [activeTab]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!canViewInventory) {
+      setLoading(false);
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    loadContacts()
+      .catch((err) => {
+        if (isMounted) {
+          console.error('Failed to load contacts:', err);
+          setError(err.message || 'Failed to load contacts');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [canViewInventory, activeTab, loadContacts]);
 
   function handleContactFormChange(e) {
     const { name, value } = e.target;
@@ -87,7 +104,7 @@ export default function ContactsModule() {
           contact_type: activeTab === 'customers' ? 'customer' : 'vendor'
         });
       }
-      await loadData();
+      await loadContacts();
       setShowContactForm(false);
       setEditingContact(null);
       setContactForm({
