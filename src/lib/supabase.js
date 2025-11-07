@@ -1142,14 +1142,14 @@ export const inventory = {
       .from('purchase_orders')
       .select(`
         *,
-        inventory_suppliers: supplier_id (
+        inventory_suppliers (
           id,
           name,
           code,
           phone,
           email
         ),
-        inventory_locations: location_id (
+        inventory_locations!purchase_orders_location_id_fkey (
           id,
           name,
           branch_id
@@ -1174,14 +1174,14 @@ export const inventory = {
       .from('purchase_orders')
       .select(`
         *,
-        inventory_suppliers:supplier_id (
+        inventory_suppliers (
           id,
           name,
           code,
           phone,
           email
         ),
-        inventory_locations:location_id (
+        inventory_locations!purchase_orders_location_id_fkey (
           id,
           name,
           branch_id
@@ -1225,7 +1225,7 @@ export const inventory = {
           order_number,
           status
         ),
-        inventory_locations:location_id (
+        inventory_locations!goods_receipts_location_id_fkey (
           id,
           name,
           branch_id
