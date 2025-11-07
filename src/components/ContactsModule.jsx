@@ -12,7 +12,7 @@ export default function ContactsModule() {
   const [editingContact, setEditingContact] = useState(null);
   const [error, setError] = useState(null);
 
-  const { canViewInventory } = useRole();
+  const { loading: roleLoading, canManageInventory } = useRole();
 
   useEffect(() => {
     checkAuth();
@@ -60,8 +60,7 @@ export default function ContactsModule() {
 
   useEffect(() => {
     let isMounted = true;
-    if (!canViewInventory) {
-      setLoading(false);
+    if (roleLoading) {
       return;
     }
     setError(null);
@@ -81,7 +80,7 @@ export default function ContactsModule() {
     return () => {
       isMounted = false;
     };
-  }, [canViewInventory, activeTab, loadContacts]);
+  }, [roleLoading, activeTab, loadContacts]);
 
   function handleContactFormChange(e) {
     const { name, value } = e.target;
@@ -142,7 +141,7 @@ export default function ContactsModule() {
     }).format(amount || 0);
   }
 
-  if (loading) {
+  if (roleLoading || loading) {
     return (
       <div className="py-8 flex items-center justify-center">
         <div className="text-center">
