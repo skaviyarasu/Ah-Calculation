@@ -14,7 +14,7 @@ export default function InventoryManagement() {
   const [branchStock, setBranchStock] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [goodsReceipts, setGoodsReceipts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('items'); // items, transactions, low-stock
   const [showItemForm, setShowItemForm] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -123,6 +123,8 @@ export default function InventoryManagement() {
   useEffect(() => {
     if (canViewInventory && currentBranch) {
       loadData(currentBranch.id);
+    } else {
+      setLoading(false);
     }
   }, [canViewInventory, currentBranch]);
 
