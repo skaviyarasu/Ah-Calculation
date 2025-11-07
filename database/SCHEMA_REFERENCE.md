@@ -94,6 +94,9 @@ Aggregated statistics view joining optimization jobs and cell capacities.
 ### Function: `update_updated_at_column()`
 Automatically updates `updated_at` timestamp when a record is modified.
 
+### Function: `admin_get_all_users()`
+Security-definer RPC that returns basic directory information (id, email, full name, last sign-in) for all Supabase auth users. Executable only by authenticated admins (checks `user_roles` for `admin` role). Used by the Admin Panel to display user names/emails.
+
 ### Trigger: `update_battery_optimization_jobs_updated_at`
 Fires before UPDATE on `battery_optimization_jobs` table to automatically update the `updated_at` timestamp.
 

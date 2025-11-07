@@ -55,6 +55,7 @@ export default function AdminPanel() {
       ]);
 
       setUsers(usersData);
+      setExpandedUserId(null);
       setRoles(rolesData);
       
       // Get permissions for both roles
@@ -64,24 +65,14 @@ export default function AdminPanel() {
       ]);
       setPermissions([...adminPerms, ...userPerms]);
 
-      // Calculate stats
-      const usersByRole = usersData.reduce((acc, userRole) => {
-        if (!acc[userRole.user_id]) {
-          acc[userRole.user_id] = [];
-        }
-        acc[userRole.user_id].push(userRole);
-        return acc;
-      }, {});
-
-      const uniqueUsers = Object.keys(usersByRole);
-      const admins = uniqueUsers.filter(userId => 
-        usersByRole[userId].some(ur => ur.role === 'admin')
-      );
+      const totalUsers = usersData.length;
+      const admins = usersData.filter(user => user.roles.includes('admin')).length;
+      const regular = Math.max(totalUsers - admins, 0);
 
       setUserStats({
-        total: uniqueUsers.length,
-        admins: admins.length,
-        regular: uniqueUsers.length - admins.length
+        total: totalUsers,
+        admins,
+        regular
       });
     } catch (error) {
       console.error('Error loading admin data:', error);
@@ -93,7 +84,7 @@ export default function AdminPanel() {
     // Special validation for admin role assignment
     if (role === 'admin') {
       // Count existing admins
-      const adminCount = uniqueUsers.filter(u => u.roles.includes('admin')).length;
+      const adminCount = users.filter(u => u.roles.includes('admin')).length;
       
       // Warn about admin privileges
       const adminWarning = `⚠️ WARNING: Admin Role Assignment\n\n` +
@@ -142,41 +133,26 @@ export default function AdminPanel() {
   }
 
   // Calculate unique users from roles data
-  const uniqueUsers = React.useMemo(() => {
-    const usersByRole = users.reduce((acc, userRole) => {
-      if (!acc[userRole.user_id]) {
-        acc[userRole.user_id] = [];
-      }
-      // Add all role entries (including null roles which indicate user exists but has no roles)
-      acc[userRole.user_id].push(userRole);
-      return acc;
-    }, {});
-
-    return Object.keys(usersByRole).map(userId => {
-      const roleEntries = usersByRole[userId];
-      // Filter out null roles and get actual roles
-      const actualRoles = roleEntries.map(ur => ur.role).filter(Boolean);
-      
-      return {
-        id: userId,
-        roles: actualRoles,
-        assigned_at: roleEntries.find(ur => ur.created_at)?.created_at,
-        assigned_by: roleEntries.find(ur => ur.assigned_by)?.assigned_by,
-        hasRoles: actualRoles.length > 0
-      };
-    });
-  }, [users]);
-
   // Filter users based on search query
   const filteredUsers = React.useMemo(() => {
-    if (!searchQuery.trim()) return uniqueUsers;
+    if (!searchQuery.trim()) return users;
 
     const query = searchQuery.toLowerCase().trim();
-    return uniqueUsers.filter(user => 
-      user.id.toLowerCase().includes(query) ||
+    return users.filter(user => 
+      (user.full_name && user.full_name.toLowerCase().includes(query)) ||
+      (user.email && user.email.toLowerCase().includes(query)) ||
+      (user.id && user.id.toLowerCase().includes(query)) ||
       user.roles.some(role => role.toLowerCase().includes(query))
     );
-  }, [uniqueUsers, searchQuery]);
+  }, [users, searchQuery]);
+
+  const usersSortedByName = React.useMemo(() => {
+    return [...users].sort((a, b) => {
+      const aLabel = (a.full_name || a.email || a.id || '').toLowerCase();
+      const bLabel = (b.full_name || b.email || b.id || '').toLowerCase();
+      return aLabel.localeCompare(bLabel);
+    });
+  }, [users]);
 
   if (loading) {
     return (
@@ -332,11 +308,15 @@ export default function AdminPanel() {
                   </p>
                 ) : (
                   <div className="divide-y divide-gray-200">
-                    {filteredUsers.map((user, index) => {
-                      const isActive = user.roles.length > 0;
-                      const primaryRole = user.roles[0] || 'user';
-                      const initials = user.id ? user.id.slice(0, 2).toUpperCase() : 'US';
-                      const truncatedId = `${user.id.substring(0, 8)}...${user.id.substring(user.id.length - 4)}`;
+                    {filteredUsers.map((user) => {
+                      const displayName = user.full_name?.trim() || (user.email ? user.email.split('@')[0] : 'Unnamed User');
+                      const displayEmail = user.email || 'Email not available';
+                      const initials = user.full_name
+                        ? user.full_name.split(' ').filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase()
+                        : (user.email ? user.email.slice(0, 2).toUpperCase() : 'US');
+                      const truncatedId = user.id ? `${user.id.substring(0, 8)}...${user.id.substring(user.id.length - 4)}` : '';
+                      const isActive = !!user.last_sign_in_at;
+                      const statusLabel = isActive ? 'Active' : 'Inactive';
                       return (
                         <div key={user.id} className="px-6 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -346,14 +326,17 @@ export default function AdminPanel() {
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-900">User {index + 1}</span>
+                                  <span className="text-sm font-medium text-gray-900">{displayName}</span>
                                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                                    {isActive ? 'Active' : 'Inactive'}
+                                    {statusLabel}
                                   </span>
                                 </div>
-                                <div className="text-xs font-mono text-gray-500 mt-1">{truncatedId}</div>
-                                {user.assigned_at && (
-                                  <div className="text-xs text-gray-400 mt-1">Assigned {new Date(user.assigned_at).toLocaleDateString()}</div>
+                                <div className="text-xs text-gray-600">{displayEmail}</div>
+                                {truncatedId && <div className="text-xs font-mono text-gray-400 mt-1">{truncatedId}</div>}
+                                {user.last_sign_in_at ? (
+                                  <div className="text-xs text-gray-400 mt-1">Last sign-in {new Date(user.last_sign_in_at).toLocaleDateString()}</div>
+                                ) : (
+                                  <div className="text-xs text-gray-400 mt-1">Never signed in</div>
                                 )}
                               </div>
                             </div>
@@ -490,15 +473,24 @@ export default function AdminPanel() {
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      User ID (UUID)
+                      Select User
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={selectedUser || ''}
-                      onChange={(e) => setSelectedUser(e.target.value)}
-                      placeholder="Enter user UUID from Supabase Dashboard"
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                    />
+                      onChange={(e) => setSelectedUser(e.target.value || null)}
+                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    >
+                      <option value="">Choose a user…</option>
+                      {usersSortedByName.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {(user.full_name?.trim() || 'Unnamed User')}{' '}
+                          {user.email ? `• ${user.email}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Tip: Register a new user in the “Register User” tab, click Refresh, and they will appear in this list.
+                    </p>
                   </div>
                   <div className="space-y-2">
                     <div className="bg-red-50 border border-red-200 rounded p-2 mb-3">
@@ -546,7 +538,7 @@ export default function AdminPanel() {
                     </p>
                   </div>
                   <p className="text-xs text-gray-600">
-                    💡 Tip: Find user ID from Supabase Dashboard → Authentication → Users
+                    💡 Tip: Need a new account? Use “Invite User” above, then refresh this view to assign roles.
                   </p>
                 </div>
               </div>
@@ -673,19 +665,19 @@ export default function AdminPanel() {
             </div>
             <div className="text-center bg-purple-50 rounded-lg p-4">
               <div className="text-3xl font-bold text-purple-600">
-                {uniqueUsers.filter(u => u.roles.includes('creator')).length}
+                {users.filter(u => u.roles.includes('creator')).length}
               </div>
               <div className="text-sm text-gray-600 mt-1">Creators</div>
             </div>
             <div className="text-center bg-orange-50 rounded-lg p-4">
               <div className="text-3xl font-bold text-orange-600">
-                {uniqueUsers.filter(u => u.roles.includes('verifier')).length}
+                {users.filter(u => u.roles.includes('verifier')).length}
               </div>
               <div className="text-sm text-gray-600 mt-1">Verifiers</div>
             </div>
             <div className="text-center bg-blue-50 rounded-lg p-4">
               <div className="text-3xl font-bold text-blue-600">
-                {uniqueUsers.filter(u => u.roles.includes('user') || u.roles.length === 0).length}
+                {users.filter(u => u.roles.includes('user') || u.roles.length === 0).length}
               </div>
               <div className="text-sm text-gray-600 mt-1">Standard Users</div>
             </div>

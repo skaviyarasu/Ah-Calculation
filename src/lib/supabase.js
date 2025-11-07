@@ -324,79 +324,109 @@ export const rbac = {
   // This function now includes users from both user_roles table and battery_optimization_jobs table
   // to show all authenticated users, even if they don't have roles assigned yet
   async getAllUsersWithRoles() {
-    // Get users with roles
-    const { data: rolesData, error: rolesError } = await supabase
-      .from('user_roles')
-      .select(`
-        id,
-        user_id,
-        role,
-        assigned_by,
-        created_at,
-        updated_at
-      `)
-      .order('created_at', { ascending: false })
-    
-    if (rolesError) throw rolesError
+    const [{ data: rolesData, error: rolesError }, { data: jobsData, error: jobsError }, directoryResponse] = await Promise.all([
+      supabase
+        .from('user_roles')
+        .select(`
+          id,
+          user_id,
+          role,
+          assigned_by,
+          created_at,
+          updated_at
+        `)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('battery_optimization_jobs')
+        .select('user_id, created_at')
+        .order('created_at', { ascending: false }),
+      supabase.rpc('admin_get_all_users')
+    ])
 
-    // Get all unique user IDs from jobs table (users who have created jobs)
-    const { data: jobsData, error: jobsError } = await supabase
-      .from('battery_optimization_jobs')
-      .select('user_id, created_at')
-      .order('created_at', { ascending: false })
-    
+    if (rolesError) throw rolesError
     if (jobsError) throw jobsError
 
-    // Combine user IDs from both sources
+    let directoryData = null
+    if (directoryResponse?.error) {
+      console.warn('admin_get_all_users RPC error:', directoryResponse.error.message)
+    } else {
+      directoryData = directoryResponse?.data || []
+    }
+
     const allUserIds = new Set()
-    
-    // Add users from roles
-    if (rolesData) {
-      rolesData.forEach(role => allUserIds.add(role.user_id))
-    }
-    
-    // Add users from jobs
-    if (jobsData) {
-      jobsData.forEach(job => allUserIds.add(job.user_id))
-    }
 
-    // Create a map of user_id to their roles
+    // Users from roles table
+    rolesData?.forEach(role => allUserIds.add(role.user_id))
+
+    // Users who created jobs (might not have explicit roles yet)
+    jobsData?.forEach(job => allUserIds.add(job.user_id))
+
+    // Users from directory (auth.users)
+    directoryData?.forEach(user => allUserIds.add(user.user_id))
+
+    // Map roles to users
     const userRolesMap = new Map()
-    if (rolesData) {
-      rolesData.forEach(role => {
-        if (!userRolesMap.has(role.user_id)) {
-          userRolesMap.set(role.user_id, [])
-        }
-        userRolesMap.get(role.user_id).push({
-          id: role.id,
-          user_id: role.user_id,
-          role: role.role,
-          assigned_by: role.assigned_by,
-          created_at: role.created_at,
-          updated_at: role.updated_at
-        })
+    rolesData?.forEach(role => {
+      if (!userRolesMap.has(role.user_id)) {
+        userRolesMap.set(role.user_id, [])
+      }
+      userRolesMap.get(role.user_id).push({
+        id: role.id,
+        user_id: role.user_id,
+        role: role.role,
+        assigned_by: role.assigned_by,
+        created_at: role.created_at,
+        updated_at: role.updated_at
       })
-    }
+    })
 
-    // Convert to array format matching the original structure
-    // For users without roles, create a placeholder entry
-    const result = []
-    allUserIds.forEach(userId => {
-      const roles = userRolesMap.get(userId) || []
-      if (roles.length > 0) {
-        // User has roles, add all role entries
-        result.push(...roles)
-      } else {
-        // User has no roles, add a single entry with null role info
-        // This ensures the user appears in the UI even without roles
-        result.push({
-          id: null, // No role entry ID since user has no roles
-          user_id: userId,
-          role: null, // Indicates no role assigned
-          assigned_by: null,
-          created_at: null,
-          updated_at: null
-        })
+    // Map directory info to users (email, full name, etc.)
+    const userDirectoryMap = new Map()
+    directoryData?.forEach(user => {
+      userDirectoryMap.set(user.user_id, {
+        email: user.email,
+        full_name: user.full_name,
+        last_sign_in_at: user.last_sign_in,
+        created_at: user.created_at
+      })
+    })
+
+    // Preserve directory ordering first, then any remaining IDs
+    const orderedIds = []
+    directoryData?.forEach(user => {
+      if (allUserIds.has(user.user_id)) {
+        orderedIds.push(user.user_id)
+      }
+    })
+    const remainingIds = [...allUserIds].filter(id => !orderedIds.includes(id))
+    const combinedIds = [...orderedIds, ...remainingIds]
+
+    const result = combinedIds.map(userId => {
+      const roleEntries = userRolesMap.get(userId) || []
+      const roles = roleEntries.map(r => r.role).filter(Boolean)
+      const info = userDirectoryMap.get(userId) || {}
+
+      const assignedAt = roleEntries.reduce((earliest, entry) => {
+        if (!entry?.created_at) return earliest
+        if (!earliest) return entry.created_at
+        return entry.created_at < earliest ? entry.created_at : earliest
+      }, null)
+
+      const primaryRole = roles.includes('admin')
+        ? 'admin'
+        : roles[0] || 'user'
+
+      return {
+        id: userId,
+        roles,
+        assignments: roleEntries,
+        assigned_at: assignedAt,
+        email: info.email || null,
+        full_name: info.full_name || null,
+        last_sign_in_at: info.last_sign_in_at || null,
+        created_at: info.created_at || null,
+        primary_role: primaryRole,
+        has_roles: roles.length > 0
       }
     })
 

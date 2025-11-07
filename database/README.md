@@ -15,6 +15,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`09_add_inventory_permissions.sql`** - Add inventory module permissions to RBAC system
 - **`10_add_cogs_and_pl_system.sql`** - Add COGS (Cost of Goods Sold) tracking and P&L (Profit & Loss) reporting system
 - **`11_create_accounting_system.sql`** - Comprehensive accounting system (invoicing, purchases, payments, banking, contacts, tax management)
+- **`12_create_user_directory.sql`** - Admin-only function to list Supabase auth users (id, name, email, last sign-in) for the Admin Panel
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
@@ -31,6 +32,7 @@ SQL files are prefixed with sequential numbers (`01_`, `02_`, `03_`, etc.) to en
 - **`09_add_inventory_permissions.sql`** - Add inventory permissions to RBAC (run this to enable role-based inventory access control)
 - **`10_add_cogs_and_pl_system.sql`** - Add COGS and P&L system (run this to enable cost tracking, sales transactions, and profit & loss reporting)
 - **`11_create_accounting_system.sql`** - Add comprehensive accounting system (run this to enable invoicing, purchases, payments, banking, contacts, and tax management)
+- **`12_create_user_directory.sql`** - Adds `admin_get_all_users()` RPC so the Admin Panel can display user names and emails
 
 This numbering system ensures files are executed in the correct order when running multiple SQL scripts.
 
