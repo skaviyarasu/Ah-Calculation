@@ -1226,24 +1226,26 @@ export default function InventoryManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {purchaseOrders.map((po) => {
-                      const poLocation = locations.find(loc => loc.id === po.location_id);
-                      const poSupplier = suppliers.find(supplier => supplier.id === po.supplier_id);
-                      return (
-                        <tr key={po.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{po.order_number}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{poSupplier?.name || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{poLocation?.name || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{po.expected_date ? new Date(po.expected_date).toLocaleDateString() : '-'}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${po.status === 'received' ? 'bg-green-100 text-green-700' : po.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {po.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{po.total_amount ? `₹${po.total_amount.toFixed(2)}` : '-'}</td>
-                        </tr>
-                      );
-                    })}
+                    {purchaseOrders
+                      .filter(po => !currentBranch?.id || locations.find(loc => loc.id === po.location_id)?.branch_id === currentBranch.id)
+                      .map((po) => {
+                        const poLocation = locations.find(loc => loc.id === po.location_id);
+                        const poSupplier = suppliers.find(supplier => supplier.id === po.supplier_id);
+                        return (
+                          <tr key={po.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{po.order_number}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{poSupplier?.name || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{poLocation?.name || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{po.expected_date ? new Date(po.expected_date).toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${po.status === 'received' ? 'bg-green-100 text-green-700' : po.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
+                                {po.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{po.total_amount ? `₹${po.total_amount.toFixed(2)}` : '-'}</td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
                 {purchaseOrders.length === 0 && (
@@ -1282,19 +1284,21 @@ export default function InventoryManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {goodsReceipts.map((receipt) => {
-                      const receiptLocation = locations.find(loc => loc.id === receipt.location_id);
-                      const receiptPO = purchaseOrders.find(po => po.id === receipt.purchase_order_id);
-                      return (
-                        <tr key={receipt.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{receipt.receipt_number}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{receiptPO?.order_number || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{receiptLocation?.name || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{receipt.received_date ? new Date(receipt.received_date).toLocaleDateString() : '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{receipt.reference_number || '-'}</td>
-                        </tr>
-                      );
-                    })}
+                    {goodsReceipts
+                      .filter(receipt => !currentBranch?.id || locations.find(loc => loc.id === receipt.location_id)?.branch_id === currentBranch.id)
+                      .map((receipt) => {
+                        const receiptLocation = locations.find(loc => loc.id === receipt.location_id);
+                        const receiptPO = purchaseOrders.find(po => po.id === receipt.purchase_order_id);
+                        return (
+                          <tr key={receipt.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{receipt.receipt_number}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{receiptPO?.order_number || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{receiptLocation?.name || '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">{receipt.received_date ? new Date(receipt.received_date).toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{receipt.reference_number || '-'}</td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
                 {goodsReceipts.length === 0 && (

@@ -1143,9 +1143,6 @@ export const inventory = {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (filters.branch_id) {
-      query = query.eq('branch_id', filters.branch_id)
-    }
     if (filters.status) {
       query = query.eq('status', filters.status)
     }
@@ -1181,9 +1178,6 @@ export const inventory = {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (filters.branch_id) {
-      query = query.eq('branch_id', filters.branch_id)
-    }
     if (filters.purchase_order_id) {
       query = query.eq('purchase_order_id', filters.purchase_order_id)
     }
