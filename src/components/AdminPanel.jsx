@@ -15,6 +15,7 @@ export default function AdminPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'roles', or 'register'
   const [userStats, setUserStats] = useState({ total: 0, admins: 0, regular: 0 });
+  const [expandedUserId, setExpandedUserId] = useState(null);
 
   useEffect(() => {
     checkAdminAccess();
@@ -271,74 +272,105 @@ export default function AdminPanel() {
           {/* User Management Tab */}
           {activeTab === 'users' && (
             <div className="space-y-6">
-              {/* Search and Filter */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex gap-4 items-end">
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Search Users
-                    </label>
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by User ID or Role..."
-                      className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+              <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                {/* Header */}
+                <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b">
+                  <div>
+                    <h2 className="text-2xl font-semibold text-gray-900">All Users</h2>
+                    <p className="text-sm text-gray-500">Manage user roles and account access.</p>
                   </div>
-                  <button
-                    onClick={loadData}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
-                  >
-                    Refresh
-                  </button>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full font-medium">
+                      Users: {filteredUsers.length} / {userStats.total}
+                    </span>
+                    <button
+                      onClick={() => setActiveTab('register')}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-sm transition-colors"
+                    >
+                      Invite User
+                    </button>
+                    <button
+                      onClick={loadData}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
+                    >
+                      Refresh
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Users List */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    Users & Roles ({filteredUsers.length})
-                  </h2>
+                {/* Search */}
+                <div className="px-6 py-4 border-b bg-gray-50">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Search Users</label>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 relative">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by user ID or role"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                        🔍
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500 hidden sm:block">Tip: paste a Supabase user UUID to locate quickly.</span>
+                  </div>
                 </div>
-              
+
+                {/* Table Header */}
+                <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50">
+                  <div className="col-span-6">User Details</div>
+                  <div className="col-span-3">Roles</div>
+                  <div className="col-span-3 text-right">Actions</div>
+                </div>
+
+                {/* Users */}
                 {filteredUsers.length === 0 ? (
                   <p className="text-gray-500 text-sm text-center py-8">
-                    {searchQuery ? 'No users found matching your search.' : 'No users with roles found.'}
+                    {searchQuery ? 'No users found matching your search.' : 'No users found yet. Invite a user to get started.'}
                   </p>
                 ) : (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {filteredUsers.map((user) => (
-                      <div
-                        key={user.id}
-                        className="bg-white border rounded-lg p-4 hover:border-blue-300 transition-colors"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="mb-2">
-                              <div className="font-mono text-sm font-semibold text-gray-800 mb-1">
-                                {user.id.substring(0, 8)}...{user.id.substring(user.id.length - 4)}
+                  <div className="divide-y divide-gray-200">
+                    {filteredUsers.map((user, index) => {
+                      const isActive = user.roles.length > 0;
+                      const primaryRole = user.roles[0] || 'user';
+                      const initials = user.id ? user.id.slice(0, 2).toUpperCase() : 'US';
+                      const truncatedId = `${user.id.substring(0, 8)}...${user.id.substring(user.id.length - 4)}`;
+                      return (
+                        <div key={user.id} className="px-6 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                            <div className="md:col-span-6 flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold text-lg">
+                                {initials}
                               </div>
-                              <div className="text-xs text-gray-500">
-                                {user.assigned_at && `Role assigned: ${new Date(user.assigned_at).toLocaleDateString()}`}
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900">User {index + 1}</span>
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                    {isActive ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+                                <div className="text-xs font-mono text-gray-500 mt-1">{truncatedId}</div>
+                                {user.assigned_at && (
+                                  <div className="text-xs text-gray-400 mt-1">Assigned {new Date(user.assigned_at).toLocaleDateString()}</div>
+                                )}
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-2 mb-2">
+
+                            <div className="md:col-span-3 flex flex-wrap gap-2">
                               {user.roles.length > 0 ? (
                                 user.roles.map((role) => (
                                   <span
                                     key={role}
                                     className={`px-3 py-1 rounded-full text-xs font-medium ${
                                       role === 'admin'
-                                        ? 'bg-red-100 text-red-800 border-2 border-red-300 font-bold'
+                                        ? 'bg-red-100 text-red-700 border border-red-200'
                                         : role === 'creator'
-                                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
                                         : role === 'verifier'
-                                        ? 'bg-orange-100 text-orange-800 border border-orange-200'
-                                        : role === 'user'
-                                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                        : 'bg-gray-100 text-gray-800 border border-gray-200'
+                                        ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                                        : 'bg-blue-100 text-blue-700 border border-blue-200'
                                     }`}
                                   >
                                     {role.toUpperCase()}
@@ -346,102 +378,108 @@ export default function AdminPanel() {
                                 ))
                               ) : (
                                 <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                                  NO ROLES (Standard User)
+                                  STANDARD USER
                                 </span>
                               )}
                             </div>
-                            {user.roles.length > 1 && (
-                              <p className="text-xs text-gray-500 mt-1">
-                                Combined roles: {user.roles.join(' + ')}
-                              </p>
-                            )}
+
+                            <div className="md:col-span-3 flex md:justify-end">
+                              <button
+                                onClick={() => setExpandedUserId(prev => (prev === user.id ? null : user.id))}
+                                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                              >
+                                <span className="hidden sm:inline">Manage</span>
+                                <span role="img" aria-label="settings">⚙️</span>
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex flex-col gap-2 ml-4">
-                            <div className="flex flex-wrap gap-2">
-                              {/* Admin Role - Restricted */}
-                              <button
-                                onClick={() => handleAssignRole(user.id, 'admin')}
-                                disabled={user.roles.includes('admin') || assigningRole}
-                                className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-semibold border-2 border-red-800"
-                                title="⚠️ RESTRICTED: Admin role grants full system access"
-                              >
-                                ⚠️ Make Admin
-                              </button>
-                              <button
-                                onClick={() => handleRemoveRole(user.id, 'admin')}
-                                disabled={!user.roles.includes('admin') || assigningRole}
-                                className="px-3 py-1.5 text-xs bg-red-700 text-white rounded-md hover:bg-red-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                                title="Remove Admin Role"
-                              >
-                                Remove Admin
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {/* Standard Roles - Can be combined */}
-                              <button
-                                onClick={() => handleAssignRole(user.id, 'creator')}
-                                disabled={user.roles.includes('creator') || assigningRole}
-                                className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                                title="Assign Creator Role (can create and edit jobs)"
-                              >
-                                {user.roles.includes('creator') ? '✓ Creator' : 'Make Creator'}
-                              </button>
-                              <button
-                                onClick={() => handleAssignRole(user.id, 'verifier')}
-                                disabled={user.roles.includes('verifier') || assigningRole}
-                                className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                                title="Assign Verifier Role (can review and approve jobs)"
-                              >
-                                {user.roles.includes('verifier') ? '✓ Verifier' : 'Make Verifier'}
-                              </button>
-                              <button
-                                onClick={() => handleAssignRole(user.id, 'user')}
-                                disabled={user.roles.includes('user') || assigningRole}
-                                className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                                title="Assign Standard User Role"
-                              >
-                                {user.roles.includes('user') ? '✓ User' : 'Make User'}
-                              </button>
-                            </div>
-                            {/* Remove role buttons */}
-                            {(user.roles.includes('creator') || user.roles.includes('verifier') || user.roles.includes('user')) && (
-                              <div className="flex flex-wrap gap-2 mt-1 pt-1 border-t border-gray-200">
-                                {user.roles.includes('creator') && (
-                                  <button
-                                    onClick={() => handleRemoveRole(user.id, 'creator')}
-                                    disabled={assigningRole}
-                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
-                                    title="Remove Creator Role"
-                                  >
-                                    Remove Creator
-                                  </button>
-                                )}
-                                {user.roles.includes('verifier') && (
-                                  <button
-                                    onClick={() => handleRemoveRole(user.id, 'verifier')}
-                                    disabled={assigningRole}
-                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
-                                    title="Remove Verifier Role"
-                                  >
-                                    Remove Verifier
-                                  </button>
-                                )}
-                                {user.roles.includes('user') && (
-                                  <button
-                                    onClick={() => handleRemoveRole(user.id, 'user')}
-                                    disabled={assigningRole}
-                                    className="px-2 py-1 text-xs bg-gray-400 text-white rounded hover:bg-gray-500 disabled:bg-gray-300 transition-colors"
-                                    title="Remove User Role"
-                                  >
-                                    Remove User
-                                  </button>
-                                )}
+
+                          {expandedUserId === user.id && (
+                            <div className="mt-4 bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
+                              <div className="flex flex-wrap gap-2">
+                                <span className="text-sm font-semibold text-blue-800">Assign Roles</span>
+                                <span className="text-xs text-blue-500">(Current: {user.roles.length > 0 ? user.roles.join(', ') : 'None'})</span>
                               </div>
-                            )}
-                          </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  onClick={() => handleAssignRole(user.id, 'admin')}
+                                  disabled={user.roles.includes('admin') || assigningRole}
+                                  className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-semibold"
+                                  title="⚠️ Admin role grants full system access"
+                                >
+                                  {user.roles.includes('admin') ? 'Admin Assigned' : 'Assign Admin'}
+                                </button>
+                                <button
+                                  onClick={() => handleAssignRole(user.id, 'creator')}
+                                  disabled={user.roles.includes('creator') || assigningRole}
+                                  className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {user.roles.includes('creator') ? 'Creator Assigned' : 'Assign Creator'}
+                                </button>
+                                <button
+                                  onClick={() => handleAssignRole(user.id, 'verifier')}
+                                  disabled={user.roles.includes('verifier') || assigningRole}
+                                  className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {user.roles.includes('verifier') ? 'Verifier Assigned' : 'Assign Verifier'}
+                                </button>
+                                <button
+                                  onClick={() => handleAssignRole(user.id, 'user')}
+                                  disabled={user.roles.includes('user') || assigningRole}
+                                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  {user.roles.includes('user') ? 'User Assigned' : 'Assign Standard'}
+                                </button>
+                              </div>
+
+                              {(user.roles.includes('admin') || user.roles.includes('creator') || user.roles.includes('verifier') || user.roles.includes('user')) && (
+                                <div className="pt-2 border-t border-blue-100">
+                                  <span className="text-xs font-semibold text-blue-800">Remove Roles</span>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {user.roles.includes('admin') && (
+                                      <button
+                                        onClick={() => handleRemoveRole(user.id, 'admin')}
+                                        disabled={assigningRole}
+                                        className="px-2.5 py-1 text-xs bg-red-100 text-red-700 rounded-md hover:bg-red-200 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
+                                      >
+                                        Remove Admin
+                                      </button>
+                                    )}
+                                    {user.roles.includes('creator') && (
+                                      <button
+                                        onClick={() => handleRemoveRole(user.id, 'creator')}
+                                        disabled={assigningRole}
+                                        className="px-2.5 py-1 text-xs bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
+                                      >
+                                        Remove Creator
+                                      </button>
+                                    )}
+                                    {user.roles.includes('verifier') && (
+                                      <button
+                                        onClick={() => handleRemoveRole(user.id, 'verifier')}
+                                        disabled={assigningRole}
+                                        className="px-2.5 py-1 text-xs bg-orange-100 text-orange-700 rounded-md hover:bg-orange-200 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
+                                      >
+                                        Remove Verifier
+                                      </button>
+                                    )}
+                                    {user.roles.includes('user') && (
+                                      <button
+                                        onClick={() => handleRemoveRole(user.id, 'user')}
+                                        disabled={assigningRole}
+                                        className="px-2.5 py-1 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
+                                      >
+                                        Remove Standard
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
