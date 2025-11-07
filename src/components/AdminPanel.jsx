@@ -33,6 +33,7 @@ export default function AdminPanel() {
   const [newRoleLabel, setNewRoleLabel] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
   const [assignRoleSelection, setAssignRoleSelection] = useState('user');
+  const [usersLoading, setUsersLoading] = useState(false);
 
   const DEFAULT_ROLES = useMemo(() => ['admin', 'accountant', 'creator', 'verifier', 'user'], []);
 
@@ -87,6 +88,33 @@ export default function AdminPanel() {
       alert('Failed to load role permissions: ' + (error.message || 'Unknown error'));
     } finally {
       setRolePermissionsLoading(false);
+    }
+  };
+
+  const updateUserStats = (usersData = []) => {
+    const totalUsers = usersData.length;
+    const admins = usersData.filter(user => user.roles.includes('admin')).length;
+    const regular = Math.max(totalUsers - admins, 0);
+
+    setUserStats({
+      total: totalUsers,
+      admins,
+      regular
+    });
+  };
+
+  const refreshUsersData = async () => {
+    setUsersLoading(true);
+    try {
+      const usersData = await rbac.getAllUsersWithRoles();
+      setUsers(usersData);
+      setExpandedUserId(null);
+      updateUserStats(usersData);
+    } catch (error) {
+      console.error('Error loading users:', error);
+      alert('Failed to load users: ' + (error.message || 'Unknown error'));
+    } finally {
+      setUsersLoading(false);
     }
   };
 
@@ -264,33 +292,7 @@ export default function AdminPanel() {
   }
 
   async function loadData() {
-    try {
-      setRolePermissionsLoading(true);
-
-      const [usersData, rolePayload] = await Promise.all([
-        rbac.getAllUsersWithRoles(),
-        rbac.getAllRoles()
-      ]);
-
-      setUsers(usersData);
-      setExpandedUserId(null);
-      processRolePermissionRows(rolePayload.permissions, rolePayload.catalog);
-
-      const totalUsers = usersData.length;
-      const admins = usersData.filter(user => user.roles.includes('admin')).length;
-      const regular = Math.max(totalUsers - admins, 0);
-
-      setUserStats({
-        total: totalUsers,
-        admins,
-        regular
-      });
-    } catch (error) {
-      console.error('Error loading admin data:', error);
-      alert('Failed to load admin data: ' + (error.message || 'Unknown error'));
-    } finally {
-      setRolePermissionsLoading(false);
-    }
+    await Promise.all([refreshUsersData(), refreshRolePermissions()]);
   }
 
   async function handleAssignRole(userId, role) {
@@ -324,7 +326,7 @@ export default function AdminPanel() {
       const user = await auth.getCurrentUser();
       await rbac.assignRole(userId, role, user.id);
       alert(`Role "${role}" assigned successfully!`);
-      await loadData();
+      await refreshUsersData();
     } catch (error) {
       console.error('Error assigning role:', error);
       alert('Failed to assign role: ' + (error.message || 'Unknown error'));
@@ -338,7 +340,7 @@ export default function AdminPanel() {
     try {
       await rbac.removeRole(userId, role);
       alert('Role removed successfully!');
-      await loadData();
+      await refreshUsersData();
     } catch (error) {
       console.error('Error removing role:', error);
       alert('Failed to remove role: ' + (error.message || 'Unknown error'));
@@ -535,10 +537,11 @@ export default function AdminPanel() {
                       Invite User
                     </button>
                     <button
-                      onClick={loadData}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
+                      onClick={refreshUsersData}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50"
+                      disabled={usersLoading}
                     >
-                      Refresh
+                      {usersLoading ? 'Refreshing…' : 'Refresh'}
                     </button>
                   </div>
                 </div>
@@ -572,7 +575,9 @@ export default function AdminPanel() {
                 </div>
 
                 {/* Users */}
-                {filteredUsers.length === 0 ? (
+                {usersLoading ? (
+                  <p className="text-gray-500 text-sm text-center py-8">Loading users…</p>
+                ) : filteredUsers.length === 0 ? (
                   <p className="text-gray-500 text-sm text-center py-8">
                     {searchQuery ? 'No users found matching your search.' : 'No users found yet. Invite a user to get started.'}
                   </p>
@@ -668,7 +673,7 @@ export default function AdminPanel() {
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   onClick={() => handleAssignRole(user.id, 'admin')}
-                                  disabled={user.roles.includes('admin') || assigningRole}
+                                  disabled={user.roles.includes('admin') || assigningRole || usersLoading}
                                   className="px-3 py-1.5 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-semibold"
                                   title="⚠️ Admin role grants full system access"
                                 >
@@ -681,7 +686,7 @@ export default function AdminPanel() {
                                     <button
                                       key={`${user.id}-assign-${role}`}
                                       onClick={() => handleAssignRole(user.id, role)}
-                                      disabled={isAssigned || assigningRole}
+                                      disabled={isAssigned || assigningRole || usersLoading}
                                       className={`px-3 py-1.5 text-xs text-white rounded-md transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${
                                         role === 'creator'
                                           ? 'bg-purple-600 hover:bg-purple-700'
@@ -706,7 +711,7 @@ export default function AdminPanel() {
                                       <button
                                         key={`${user.id}-remove-${role}`}
                                         onClick={() => handleRemoveRole(user.id, role)}
-                                        disabled={assigningRole}
+                                        disabled={assigningRole || usersLoading}
                                         className="px-2.5 py-1 text-xs bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
                                       >
                                         Remove {getRoleLabel(role)}
@@ -772,7 +777,7 @@ export default function AdminPanel() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => selectedUser && handleAssignRole(selectedUser, assignRoleSelection)}
-                        disabled={!selectedUser || assigningRole}
+                        disabled={!selectedUser || assigningRole || usersLoading}
                         className={`px-4 py-2 text-white rounded-md transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed ${
                           assignRoleSelection === 'admin'
                             ? 'bg-red-600 hover:bg-red-700'
