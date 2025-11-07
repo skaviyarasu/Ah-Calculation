@@ -86,7 +86,7 @@
   }
 
   .glass-panel {
-    @apply bg-card/90 backdrop-blur-md border border-white/20 shadow-layer-md rounded-2xl;
+    @apply bg-card backdrop-blur-md border border-white/20 shadow-layer-md rounded-2xl;
   }
 
   .metric-chip {
