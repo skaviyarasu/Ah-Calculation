@@ -692,12 +692,12 @@ export default function InventoryManagement() {
     }
   }
 
-  if (loading || roleLoading || branchLoading) {
+  if (roleLoading || loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading inventory...</p>
+      <div className="py-12 flex items-center justify-center">
+        <div className="panel px-10 py-8 text-center">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full border-2 border-accent/40 border-t-transparent animate-spin"></div>
+          <p className="text-sm text-muted-foreground tracking-[0.3em] uppercase">Loading inventory</p>
         </div>
       </div>
     );
@@ -738,7 +738,143 @@ export default function InventoryManagement() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="space-y-10">
+      <motion.section {...panelMotion} className="panel px-6 py-7 space-y-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Inventory Control</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-fluid-xl font-semibold text-foreground">Inventory Management</h1>
+              {currentBranch && (
+                <span className="metric-chip text-xs font-medium text-muted-foreground">
+                  Branch · {currentBranch.name}
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground max-w-2xl">
+              Track stock levels across locations, manage supplier relationships, and reconcile purchase orders with incoming goods.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowTransactionForm(true)}
+              className={`${buttonClasses.secondary} ${disabledButtonClass}`}
+            >
+              + Quick Transaction
+            </button>
+            <button
+              onClick={() => {
+                setEditingItem(null);
+                setItemForm({
+                  item_code: '',
+                  item_name: '',
+                  description: '',
+                  category: 'battery_cell',
+                  unit: 'pcs',
+                  capacity_mah: '',
+                  voltage: '',
+                  manufacturer: '',
+                  supplier: '',
+                  cost_per_unit: '',
+                  selling_price: '',
+                  min_stock_level: 0,
+                  max_stock_level: '',
+                  location: '',
+                  status: 'active',
+                  notes: '',
+                  image_url: '',
+                  serial_number: ''
+                });
+                setImageFile(null);
+                setImagePreview(null);
+                setShowItemForm(true);
+              }}
+              className={`${buttonClasses.primary} ${disabledButtonClass}`}
+            >
+              + Add Item
+            </button>
+          </div>
+        </div>
+      </motion.section>
+      <motion.section {...panelMotion} className="panel px-6 py-6 space-y-6">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveTab('items')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'items'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Items ({items.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'transactions'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Transactions ({transactions.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('low-stock')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'low-stock'
+                ? 'bg-warning text-warning-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Low Stock
+            {lowStockItems.length > 0 && (
+              <span className="ml-2 rounded-full bg-danger px-2 py-0.5 text-xs font-semibold text-danger-foreground">
+                {lowStockItems.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('suppliers')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'suppliers'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Suppliers ({suppliers.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('locations')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'locations'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Locations ({locations.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('purchase-orders')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'purchase-orders'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Purchase Orders ({purchaseOrders.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('goods-receipts')}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'goods-receipts'
+                ? 'bg-accent text-accent-foreground shadow-layer-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Goods Receipts ({goodsReceipts.length})
+          </button>
+        </div>
+      </motion.section>
       <div className="max-w-7xl mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -873,20 +1009,19 @@ export default function InventoryManagement() {
 
           {/* Items Tab */}
           {activeTab === 'items' && (
-            <div className="space-y-4">
-              {/* Search and Filter */}
-              <div className="flex gap-4">
+            <div className="space-y-5">
+              <div className="flex flex-wrap gap-3">
                 <input
                   type="text"
-                  placeholder="Search items..."
+                  placeholder="Search items, serials, descriptions…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  className={`${baseInputClass} flex-1 min-w-[220px]`}
                 />
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}
-                  className="p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  className={`${baseSelectClass} w-full sm:w-[180px]`}
                 >
                   <option value="all">All Categories</option>
                   <option value="battery_cell">Battery Cells</option>
@@ -895,123 +1030,122 @@ export default function InventoryManagement() {
                 </select>
               </div>
 
-              {/* Items Table */}
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Barcode</th>
-                      {canEdit && (
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredItems.map((item) => {
-                      const stockStatus = getStockStatus(item);
-                      const branchEntries = getBranchStockEntries(item.id);
-                      return (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            {item.image_url ? (
-                              <img 
-                                src={item.image_url} 
-                                alt={item.item_name}
-                                className="w-16 h-16 object-cover rounded border border-gray-200"
-                                onError={(e) => {
-                                  e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64"%3E%3Crect width="64" height="64" fill="%23e5e7eb"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="10"%3ENo Image%3C/text%3E%3C/svg%3E';
-                                }}
-                              />
-                            ) : (
-                              <div className="w-16 h-16 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
-                                <span className="text-xs text-gray-400">No Image</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item_code}</td>
-                          <td className="px-4 py-3 text-sm font-mono text-gray-700">
-                            {item.serial_number || <span className="text-gray-400">-</span>}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{item.item_name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500 capitalize">{item.category?.replace('_', ' ')}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStockStatusColor(stockStatus)}`}>
-                              {item.current_stock} {item.unit}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              item.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">
-                            {branchEntries.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {branchEntries.map((entry) => (
-                                  <span
-                                    key={`${entry.item_id}-${entry.location_id}`}
-                                    className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-100"
-                                  >
-                                    {locations.find(loc => loc.id === entry.location_id)?.name || 'Location'}: {Number(entry.quantity || 0)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span>{item.location || '-'}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {item.serial_number ? (
-                              <button
-                                onClick={() => handleShowBarcode(item)}
-                                className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-medium transition-colors"
-                                title="View Barcode"
-                              >
-                                📊 Barcode
-                              </button>
-                            ) : (
-                              <span className="text-gray-400 text-xs">No Serial</span>
-                            )}
-                          </td>
-                          {canEdit && (
-                            <td className="px-4 py-3 text-sm">
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleEditItem(item)}
-                                  className="text-blue-600 hover:text-blue-800"
-                                >
-                                  Edit
-                                </button>
-                                {isAdmin && (
-                                  <button
-                                    onClick={() => handleDeleteItem(item.id)}
-                                    className="text-red-600 hover:text-red-800"
-                                  >
-                                    Delete
-                                  </button>
-                                )}
-                              </div>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Image</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Serial #</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Barcode</th>
+                        {canEdit && (
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {filteredItems.map((item) => {
+                        const stockStatus = getStockStatus(item);
+                        const branchEntries = getBranchStockEntries(item.id);
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              {item.image_url ? (
+                                <img 
+                                  src={item.image_url} 
+                                  alt={item.item_name}
+                                  className="w-16 h-16 object-cover rounded border border-gray-200"
+                                  onError={(e) => {
+                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64"%3E%3Crect width="64" height="64" fill="%23e5e7eb"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-size="10"%3ENo Image%3C/text%3E%3C/svg%3E';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-16 h-16 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                                  <span className="text-xs text-gray-400">No Image</span>
+                                </div>
+                              )}
                             </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item_code}</td>
+                            <td className="px-4 py-3 text-sm font-mono text-gray-700">
+                              {item.serial_number || <span className="text-gray-400">-</span>}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{item.item_name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500 capitalize">{item.category?.replace('_', ' ')}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStockStatusColor(stockStatus)}`}>
+                                {item.current_stock} {item.unit}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                item.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-500">
+                              {branchEntries.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {branchEntries.map((entry) => (
+                                    <span
+                                      key={`${entry.item_id}-${entry.location_id}`}
+                                      className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-100"
+                                    >
+                                      {locations.find(loc => loc.id === entry.location_id)?.name || 'Location'}: {Number(entry.quantity || 0)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span>{item.location || '-'}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              {item.serial_number ? (
+                                <button
+                                  onClick={() => handleShowBarcode(item)}
+                                  className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-medium transition-colors"
+                                  title="View Barcode"
+                                >
+                                  📊 Barcode
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-xs">No Serial</span>
+                              )}
+                            </td>
+                            {canEdit && (
+                              <td className="px-4 py-3 text-sm">
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleEditItem(item)}
+                                    className="text-blue-600 hover:text-blue-800"
+                                  >
+                                    Edit
+                                  </button>
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => handleDeleteItem(item.id)}
+                                      className="text-red-600 hover:text-red-800"
+                                    >
+                                      Delete
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 {filteredItems.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">
-                    No items found. {canEdit && 'Click "Add Item" to create one.'}
-                  </div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No items found. {canEdit && 'Click "Add Item" to create one.'}</div>
                 )}
               </div>
             </div>
@@ -1020,49 +1154,51 @@ export default function InventoryManagement() {
           {/* Transactions Tab */}
           {activeTab === 'transactions' && (
             <div className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {transactions.map((transaction) => (
-                      <tr key={transaction.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {new Date(transaction.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {transaction.inventory_items?.item_name || transaction.item_id}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            transaction.transaction_type === 'in' 
-                              ? 'bg-green-100 text-green-800' 
-                              : transaction.transaction_type === 'out'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {transaction.transaction_type.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{transaction.quantity}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {transaction.unit_price ? `$${transaction.unit_price.toFixed(2)}` : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{transaction.reference_number || '-'}</td>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit Price</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {transactions.map((transaction) => (
+                        <tr key={transaction.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {new Date(transaction.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {transaction.inventory_items?.item_name || transaction.item_id}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              transaction.transaction_type === 'in' 
+                                ? 'bg-green-100 text-green-800' 
+                                : transaction.transaction_type === 'out'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {transaction.transaction_type.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{transaction.quantity}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {transaction.unit_price ? `$${transaction.unit_price.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{transaction.reference_number || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {transactions.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No transactions found.</div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No transactions found.</div>
                 )}
               </div>
             </div>
@@ -1072,42 +1208,44 @@ export default function InventoryManagement() {
           {activeTab === 'low-stock' && (
             <div className="space-y-4">
               {lowStockItems.length > 0 ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
-                  <p className="text-sm text-yellow-800">
+                <div className="rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+                  <p>
                     <strong>Warning:</strong> {lowStockItems.length} item(s) are at or below minimum stock level.
                   </p>
                 </div>
               ) : (
-                <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-4">
-                  <p className="text-sm text-green-800">All items are above minimum stock level.</p>
+                <div className="rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+                  <p>All items are above minimum stock level.</p>
                 </div>
               )}
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Stock</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Min Level</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deficit</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {lowStockItems.map((item) => {
-                      const deficit = item.min_stock_level - item.current_stock;
-                      return (
-                        <tr key={item.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item_code}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{item.item_name}</td>
-                          <td className="px-4 py-3 text-sm text-red-600 font-medium">{item.current_stock}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{item.min_stock_level}</td>
-                          <td className="px-4 py-3 text-sm text-red-600 font-bold">{deficit} units</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item Code</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Stock</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Min Level</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deficit</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {lowStockItems.map((item) => {
+                        const deficit = item.min_stock_level - item.current_stock;
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.item_code}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{item.item_name}</td>
+                            <td className="px-4 py-3 text-sm text-red-600 font-medium">{item.current_stock}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{item.min_stock_level}</td>
+                            <td className="px-4 py-3 text-sm text-red-600 font-bold">{deficit} units</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -1117,65 +1255,67 @@ export default function InventoryManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">Supplier Directory</h2>
-                  <p className="text-sm text-gray-500">Manage vendors feeding the supply chain.</p>
+                  <h2 className="text-lg font-semibold text-foreground">Supplier Directory</h2>
+                  <p className="text-sm text-muted-foreground">Manage vendors feeding the supply chain.</p>
                 </div>
                 {canEdit && (
                   <button
                     onClick={() => setShowSupplierForm(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    className={`${buttonClasses.primary} ${disabledButtonClass}`}
                   >
                     + Add Supplier
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {suppliers.map((supplier) => (
-                      <tr key={supplier.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{supplier.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{supplier.contact_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {supplier.phone || supplier.mobile || '-'}
-                          {supplier.mobile && supplier.phone && (
-                            <div className="text-xs text-gray-400">Alt: {supplier.mobile}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-blue-600">{supplier.email || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
-                          {supplier.gstin || supplier.pan ? (
-                            <div className="space-y-1">
-                              {supplier.gstin && <div className="text-xs font-mono">GSTIN: {supplier.gstin}</div>}
-                              {supplier.pan && <div className="text-xs font-mono">PAN: {supplier.pan}</div>}
-                              {supplier.msme_number && <div className="text-xs font-mono">MSME: {supplier.msme_number}</div>}
-                              {supplier.payment_terms && <div className="text-xs text-gray-400">Terms: {supplier.payment_terms}</div>}
-                              {supplier.credit_limit != null && <div className="text-xs text-gray-400">Credit Limit: ₹{supplier.credit_limit}</div>}
-                            </div>
-                          ) : (
-                            <span>-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${supplier.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                            {supplier.status || 'active'}
-                          </span>
-                        </td>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {suppliers.map((supplier) => (
+                        <tr key={supplier.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{supplier.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{supplier.contact_name || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {supplier.phone || supplier.mobile || '-'}
+                            {supplier.mobile && supplier.phone && (
+                              <div className="text-xs text-gray-400">Alt: {supplier.mobile}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-blue-600">{supplier.email || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {supplier.gstin || supplier.pan ? (
+                              <div className="space-y-1">
+                                {supplier.gstin && <div className="text-xs font-mono">GSTIN: {supplier.gstin}</div>}
+                                {supplier.pan && <div className="text-xs font-mono">PAN: {supplier.pan}</div>}
+                                {supplier.msme_number && <div className="text-xs font-mono">MSME: {supplier.msme_number}</div>}
+                                {supplier.payment_terms && <div className="text-xs text-gray-400">Terms: {supplier.payment_terms}</div>}
+                                {supplier.credit_limit != null && <div className="text-xs text-gray-400">Credit Limit: ₹{supplier.credit_limit}</div>}
+                              </div>
+                            ) : (
+                              <span>-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${supplier.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {supplier.status || 'active'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {suppliers.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No suppliers yet. {canEdit && 'Add your first vendor to build purchasing workflows.'}</div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No suppliers yet. {canEdit && 'Add your first vendor to build purchasing workflows.'}</div>
                 )}
               </div>
             </div>
@@ -1186,47 +1326,49 @@ export default function InventoryManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">Stock Locations</h2>
-                  <p className="text-sm text-gray-500">Warehouse and service bay storage for {currentBranch?.name || 'selected branch'}.</p>
+                  <h2 className="text-lg font-semibold text-foreground">Stock Locations</h2>
+                  <p className="text-sm text-muted-foreground">Warehouse and service bay storage for {currentBranch?.name || 'selected branch'}.</p>
                 </div>
                 {canEdit && (
                   <button
                     onClick={() => setShowLocationForm(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    className={`${buttonClasses.primary} ${disabledButtonClass}`}
                   >
                     + Add Location
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map((location) => (
-                      <tr key={location.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900 font-medium">{location.name}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{location.code || '-'}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {location.is_default ? (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Default</span>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{location.description || '-'}</td>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Code</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Default</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).map((location) => (
+                        <tr key={location.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-900 font-medium">{location.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{location.code || '-'}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {location.is_default ? (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Default</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{location.description || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {locations.filter(loc => !currentBranch || loc.branch_id === currentBranch.id).length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No locations configured for this branch.</div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No locations configured for this branch.</div>
                 )}
               </div>
             </div>
@@ -1237,55 +1379,57 @@ export default function InventoryManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">Purchase Orders</h2>
-                  <p className="text-sm text-gray-500">Track inbound supply for {currentBranch?.name || 'branch'}.</p>
+                  <h2 className="text-lg font-semibold text-foreground">Purchase Orders</h2>
+                  <p className="text-sm text-muted-foreground">Track inbound supply for {currentBranch?.name || 'branch'}.</p>
                 </div>
                 {canEdit && (
                   <button
                     onClick={() => setShowPurchaseOrderForm(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    className={`${buttonClasses.primary} ${disabledButtonClass}`}
                   >
                     + New Purchase Order
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expected</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {purchaseOrders
-                      .filter(po => !currentBranch?.id || locations.find(loc => loc.id === po.location_id)?.branch_id === currentBranch.id)
-                      .map((po) => {
-                        const poLocation = locations.find(loc => loc.id === po.location_id);
-                        const poSupplier = suppliers.find(supplier => supplier.id === po.supplier_id);
-                        return (
-                          <tr key={po.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{po.order_number}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{poSupplier?.name || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{poLocation?.name || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{po.expected_date ? new Date(po.expected_date).toLocaleDateString() : '-'}</td>
-                            <td className="px-4 py-3 text-sm">
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${po.status === 'received' ? 'bg-green-100 text-green-700' : po.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
-                                {po.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-700">{po.total_amount ? `₹${po.total_amount.toFixed(2)}` : '-'}</td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Order #</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Supplier</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expected</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {purchaseOrders
+                        .filter(po => !currentBranch?.id || locations.find(loc => loc.id === po.location_id)?.branch_id === currentBranch.id)
+                        .map((po) => {
+                          const poLocation = locations.find(loc => loc.id === po.location_id);
+                          const poSupplier = suppliers.find(supplier => supplier.id === po.supplier_id);
+                          return (
+                            <tr key={po.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">{po.order_number}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{poSupplier?.name || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{poLocation?.name || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{po.expected_date ? new Date(po.expected_date).toLocaleDateString() : '-'}</td>
+                              <td className="px-4 py-3 text-sm">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${po.status === 'received' ? 'bg-green-100 text-green-700' : po.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
+                                  {po.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">{po.total_amount ? `₹${po.total_amount.toFixed(2)}` : '-'}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
                 {purchaseOrders.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No purchase orders yet.</div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No purchase orders yet.</div>
                 )}
               </div>
             </div>
@@ -1296,49 +1440,51 @@ export default function InventoryManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-800">Goods Receipts</h2>
-                  <p className="text-sm text-gray-500">Record inbound stock and reconcile purchase orders.</p>
+                  <h2 className="text-lg font-semibold text-foreground">Goods Receipts</h2>
+                  <p className="text-sm text-muted-foreground">Record inbound stock and reconcile purchase orders.</p>
                 </div>
                 {canEdit && (
                   <button
                     onClick={() => setShowGoodsReceiptForm(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                    className={`${buttonClasses.primary} ${disabledButtonClass}`}
                   >
                     + Record Receipt
                   </button>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receipt #</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Order</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {goodsReceipts
-                      .filter(receipt => !currentBranch?.id || locations.find(loc => loc.id === receipt.location_id)?.branch_id === currentBranch.id)
-                      .map((receipt) => {
-                        const receiptLocation = locations.find(loc => loc.id === receipt.location_id);
-                        const receiptPO = purchaseOrders.find(po => po.id === receipt.purchase_order_id);
-                        return (
-                          <tr key={receipt.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{receipt.receipt_number}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{receiptPO?.order_number || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{receiptLocation?.name || '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{receipt.received_date ? new Date(receipt.received_date).toLocaleDateString() : '-'}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{receipt.reference_number || '-'}</td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+              <div className="rounded-2xl border border-white/40 bg-white/75 shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-white/40">
+                    <thead className="bg-white/70">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receipt #</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Purchase Order</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Received Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reference</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white/80 divide-y divide-white/60">
+                      {goodsReceipts
+                        .filter(receipt => !currentBranch?.id || locations.find(loc => loc.id === receipt.location_id)?.branch_id === currentBranch.id)
+                        .map((receipt) => {
+                          const receiptLocation = locations.find(loc => loc.id === receipt.location_id);
+                          const receiptPO = purchaseOrders.find(po => po.id === receipt.purchase_order_id);
+                          return (
+                            <tr key={receipt.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">{receipt.receipt_number}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{receiptPO?.order_number || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{receiptLocation?.name || '-'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{receipt.received_date ? new Date(receipt.received_date).toLocaleDateString() : '-'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">{receipt.reference_number || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
                 {goodsReceipts.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No goods receipts recorded yet.</div>
+                  <div className="py-8 text-center text-sm text-muted-foreground">No goods receipts recorded yet.</div>
                 )}
               </div>
             </div>
@@ -1361,7 +1507,7 @@ export default function InventoryManagement() {
                         value={itemForm.item_code}
                         onChange={handleItemFormChange}
                         required
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1372,7 +1518,7 @@ export default function InventoryManagement() {
                         value={itemForm.item_name}
                         onChange={handleItemFormChange}
                         required
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                   </div>
@@ -1445,7 +1591,7 @@ export default function InventoryManagement() {
                         value={itemForm.unit}
                         onChange={handleItemFormChange}
                         required
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1787,7 +1933,7 @@ export default function InventoryManagement() {
                       value={supplierForm.name}
                       onChange={handleSupplierFormChange}
                       required
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1797,7 +1943,7 @@ export default function InventoryManagement() {
                       name="code"
                       value={supplierForm.code}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1807,7 +1953,7 @@ export default function InventoryManagement() {
                       name="contact_name"
                       value={supplierForm.contact_name}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1818,7 +1964,7 @@ export default function InventoryManagement() {
                         name="phone"
                         value={supplierForm.phone}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1828,7 +1974,7 @@ export default function InventoryManagement() {
                         name="mobile"
                         value={supplierForm.mobile}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                   </div>
@@ -1839,7 +1985,7 @@ export default function InventoryManagement() {
                       name="email"
                       value={supplierForm.email}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1849,7 +1995,7 @@ export default function InventoryManagement() {
                       name="tax_number"
                       value={supplierForm.tax_number}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1860,7 +2006,7 @@ export default function InventoryManagement() {
                         name="gstin"
                         value={supplierForm.gstin}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md font-mono"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1870,7 +2016,7 @@ export default function InventoryManagement() {
                         name="pan"
                         value={supplierForm.pan}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md font-mono"
+                        className={baseInputClass}
                       />
                     </div>
                   </div>
@@ -1881,7 +2027,7 @@ export default function InventoryManagement() {
                       name="msme_number"
                       value={supplierForm.msme_number}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1902,7 +2048,7 @@ export default function InventoryManagement() {
                         name="city"
                         value={supplierForm.city}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1912,7 +2058,7 @@ export default function InventoryManagement() {
                         name="state"
                         value={supplierForm.state}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                     <div>
@@ -1922,7 +2068,7 @@ export default function InventoryManagement() {
                         name="postal_code"
                         value={supplierForm.postal_code}
                         onChange={handleSupplierFormChange}
-                        className="w-full p-2 border border-gray-300 rounded-md"
+                        className={baseInputClass}
                       />
                     </div>
                   </div>
@@ -1933,7 +2079,7 @@ export default function InventoryManagement() {
                       name="country"
                       value={supplierForm.country}
                       onChange={handleSupplierFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1980,7 +2126,7 @@ export default function InventoryManagement() {
                       value={locationForm.name}
                       onChange={handleLocationFormChange}
                       required
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
@@ -1990,7 +2136,7 @@ export default function InventoryManagement() {
                       name="code"
                       value={locationForm.code}
                       onChange={handleLocationFormChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className={baseInputClass}
                     />
                   </div>
                   <div>
