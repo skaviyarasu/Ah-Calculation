@@ -696,7 +696,7 @@ export default function App() {
 
   const baseInputClass = "w-full rounded-xl border border-white/40 bg-white/70 px-4 py-2.5 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-transparent";
   const disabledInputClass = "pointer-events-none opacity-60";
-  const cellInputClass = "w-full rounded-xl border border-white/40 bg-white/85 px-3 py-2 text-sm shadow-sm transition focus:outline-none focus:ring-1 focus:ring-accent/30";
+  const cellInputClass = "w-full min-w-[78px] rounded-2xl border border-white/40 bg-white/90 px-4 py-3 text-base leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent/40";
   const disabledCellClass = "pointer-events-none opacity-60";
   const buttonClasses = {
     primary: "rounded-full bg-accent text-accent-foreground px-5 py-2.5 text-sm font-semibold shadow-layer-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/40",
@@ -943,7 +943,7 @@ export default function App() {
         initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="panel relative overflow-hidden px-6 py-8 space-y-8"
+        className="panel relative px-6 py-8 space-y-8"
       >
         <div className="pointer-events-none absolute inset-0 -z-10 bg-layer-gradient opacity-80" />
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">

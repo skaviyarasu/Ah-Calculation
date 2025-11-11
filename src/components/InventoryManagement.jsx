@@ -34,6 +34,23 @@ export default function InventoryManagement() {
     loading: branchLoading
   } = useBranch();
 
+  const panelMotion = {
+    initial: { opacity: 0, y: 16 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.28, ease: "easeOut" }
+  };
+
+  const baseInputClass = "w-full rounded-xl border border-white/40 bg-white/75 px-4 py-2.5 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-transparent";
+  const baseSelectClass = baseInputClass;
+  const disabledButtonClass = "disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none";
+  const buttonClasses = {
+    primary: "rounded-full bg-accent text-accent-foreground px-5 py-2.5 text-sm font-semibold shadow-layer-sm transition hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-accent/40",
+    secondary: "rounded-full border border-white/40 bg-white/70 px-5 py-2.5 text-sm font-medium text-muted-foreground shadow-sm transition hover:border-accent/40 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/20",
+    subtle: "rounded-full bg-muted px-5 py-2.5 text-sm font-medium text-muted-foreground transition hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent/10",
+    danger: "rounded-full bg-danger text-danger-foreground px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-danger/80 focus:outline-none focus:ring-2 focus:ring-danger/40",
+    warning: "rounded-full bg-warning text-warning-foreground px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-warning/75 focus:outline-none focus:ring-2 focus:ring-warning/40"
+  };
+
   // Form states
   const [itemForm, setItemForm] = useState({
     item_code: '',
