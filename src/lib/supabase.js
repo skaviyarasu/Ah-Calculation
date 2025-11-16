@@ -1078,8 +1078,8 @@ export const inventory = {
     if (error) throw error
     return data
   },
-
-  // Locations
+ 
+  // Locations: direct query, no session cache
   async getLocations(branchId = null) {
     let query = supabase
       .from('inventory_locations')
@@ -1093,7 +1093,14 @@ export const inventory = {
 
     const { data, error } = await query
     if (error) throw error
-    return data || []
+    return (data || []).map((loc) => ({
+      id: loc.id,
+      branch_id: loc.branch_id,
+      name: loc.name,
+      code: loc.code,
+      description: loc.description,
+      is_default: loc.is_default
+    }))
   },
 
   async createLocation(payload) {

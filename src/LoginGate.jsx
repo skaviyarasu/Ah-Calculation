@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { auth, supabase } from './lib/supabase';
+import { auth, supabase, inventory } from './lib/supabase';
 
 export default function LoginGate({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -27,7 +27,7 @@ useEffect(() => {
     }
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
       }

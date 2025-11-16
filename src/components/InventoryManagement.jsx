@@ -51,6 +51,9 @@ export default function InventoryManagement() {
     warning: "rounded-full bg-warning text-warning-foreground px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:bg-warning/75 focus:outline-none focus:ring-2 focus:ring-warning/40"
   };
 
+  const roleResolved = !roleLoading && typeof canViewInventory === "boolean";
+const branchResolved = !branchLoading;
+
   // Form states
   const [itemForm, setItemForm] = useState({
     item_code: '',
@@ -158,7 +161,9 @@ export default function InventoryManagement() {
     if (!currentBranch?.id || locations.length === 0) return;
     const branchLocations = locations.filter(loc => loc.branch_id === currentBranch.id);
     if (branchLocations.length === 0) return;
-    const defaultLocation = branchLocations.find(loc => loc.is_default) || branchLocations[0];
+    const defaultLocation =
+      branchLocations.find(loc => loc.is_default) ||
+      branchLocations[0];
     if (!defaultLocation) return;
     setTransactionForm(prev => ({ ...prev, location_id: prev.location_id || defaultLocation.id }));
     setPurchaseOrderForm(prev => ({ ...prev, location_id: prev.location_id || defaultLocation.id }));
@@ -709,7 +714,7 @@ export default function InventoryManagement() {
     }
   }
 
-  if (roleLoading || loading) {
+  if (!roleResolved || loading || !branchResolved) {
     return (
       <div className="py-12 flex items-center justify-center">
         <div className="panel px-10 py-8 text-center">
@@ -721,7 +726,7 @@ export default function InventoryManagement() {
   }
 
   // Check if user has permission to view inventory
-  if (!canViewInventory) {
+  if (roleResolved && !canViewInventory) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center border border-red-200">
@@ -738,7 +743,7 @@ export default function InventoryManagement() {
     );
   }
 
-  if (canViewInventory && !currentBranch) {
+  if (roleResolved && canViewInventory && branchResolved && !currentBranch) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center border border-blue-200">
@@ -749,6 +754,27 @@ export default function InventoryManagement() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Select a Branch</h1>
           <p className="text-gray-600 mb-4">Inventory data is managed per branch. Please choose a branch from the top bar to continue.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    roleResolved &&
+    branchResolved &&
+    canViewInventory &&
+    currentBranch &&
+    !loading &&
+    locations.length === 0
+  ) {
+    return (
+      <div className="py-12 flex items-center justify-center">
+        <div className="panel px-10 py-8 text-center space-y-3">
+          <p className="text-sm font-semibold text-foreground">No locations assigned</p>
+          <p className="text-sm text-muted-foreground">
+            You do not have any inventory locations mapped in {currentBranch.name}. Please contact your
+            branch manager to request access.
+          </p>
         </div>
       </div>
     );
