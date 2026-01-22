@@ -27,31 +27,30 @@ useEffect(() => {
     }
 
     // Clear old auth state if URL changed (one-time cleanup)
-    const oldUrl = 'https://aswjfohpdtbordfpdfqk.supabase.co'
-    if (supabaseUrl !== oldUrl) {
-      // Clear any localStorage keys from old URL
-      const storageKeys = Object.keys(localStorage)
-      storageKeys.forEach(key => {
-        if (key.includes('supabase') && key.includes('aswjfohpdtbordfpdfqk')) {
-          localStorage.removeItem(key)
-        }
-      })
-      // Clear sessionStorage too
-      const sessionKeys = Object.keys(sessionStorage)
-      sessionKeys.forEach(key => {
-        if (key.includes('supabase') && key.includes('aswjfohpdtbordfpdfqk')) {
-          sessionStorage.removeItem(key)
-        }
-      })
-    }
+    const currentUrlPattern = supabaseUrl.replace(/https?:\/\//, '').replace(/\/$/, '')
+    
+    // Clear any localStorage keys that don't match current URL
+    const storageKeys = Object.keys(localStorage)
+    storageKeys.forEach(key => {
+      if (key.includes('supabase') && key.includes('supabase.co') && !key.includes(currentUrlPattern)) {
+        localStorage.removeItem(key)
+      }
+    })
+    // Clear sessionStorage too
+    const sessionKeys = Object.keys(sessionStorage)
+    sessionKeys.forEach(key => {
+      if (key.includes('supabase') && key.includes('supabase.co') && !key.includes(currentUrlPattern)) {
+        sessionStorage.removeItem(key)
+      }
+    })
 
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
-        // If error is due to old URL, clear and retry
-        if (error.message?.includes('aswjfohpdtbordfpdfqk') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
-          console.log('🔄 Clearing old auth state due to URL change')
+        // If error is due to old URL or network issues, clear and retry
+        if (error.message?.includes('ERR_NAME_NOT_RESOLVED') || error.message?.includes('Failed to fetch')) {
+          console.log('🔄 Clearing auth state due to connection error')
           await supabase.auth.signOut()
         }
       }
@@ -60,8 +59,8 @@ useEffect(() => {
       setLoading(false);
     }).catch((error) => {
       console.error('Failed to get session:', error);
-      // Clear old auth state on error
-      if (error.message?.includes('aswjfohpdtbordfpdfqk') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+      // Clear auth state on connection errors
+      if (error.message?.includes('ERR_NAME_NOT_RESOLVED') || error.message?.includes('Failed to fetch')) {
         supabase.auth.signOut().catch(() => {})
       }
       setLoading(false);

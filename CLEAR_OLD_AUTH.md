@@ -1,7 +1,7 @@
 # Clear Old Supabase Auth State
 
 ## Problem
-The old Supabase URL `https://aswjfohpdtbordfpdfqk.supabase.co` is cached in browser localStorage, causing refresh token errors.
+Old Supabase URLs may be cached in browser localStorage, causing refresh token errors when the URL changes.
 
 ## Quick Fix: Clear Browser Storage
 
@@ -9,10 +9,10 @@ The old Supabase URL `https://aswjfohpdtbordfpdfqk.supabase.co` is cached in bro
 Open browser console (F12) and run:
 
 ```javascript
-// Clear all Supabase auth tokens
+// Clear all Supabase auth tokens (clears any old/mismatched URLs)
 const keys = Object.keys(localStorage);
 keys.forEach(key => {
-  if (key.includes('supabase') || key.includes('aswjfohpdtbordfpdfqk')) {
+  if (key.includes('supabase')) {
     localStorage.removeItem(key);
     console.log('Removed:', key);
   }
@@ -21,7 +21,7 @@ keys.forEach(key => {
 // Clear sessionStorage too
 const sessionKeys = Object.keys(sessionStorage);
 sessionKeys.forEach(key => {
-  if (key.includes('supabase') || key.includes('aswjfohpdtbordfpdfqk')) {
+  if (key.includes('supabase')) {
     sessionStorage.removeItem(key);
     console.log('Removed from session:', key);
   }
