@@ -79,13 +79,13 @@ export const db = {
   },
 
   async deleteJob(jobId) {
-    // Delete cell capacities first (due to foreign key constraint)
+    // Delete cell capacities first (due to foreign key constraint) - for old format
     await supabase
       .from('battery_cell_capacities')
       .delete()
       .eq('optimization_job_id', jobId)
 
-    // Then delete the optimization job
+    // Then delete the optimization job (cell_data JSONB is automatically deleted with CASCADE)
     const { error } = await supabase
       .from('battery_optimization_jobs')
       .delete()
@@ -96,45 +96,90 @@ export const db = {
   },
 
   // Battery Cell Capacities operations
+  // OPTIMIZED: Store cell data as JSONB in jobs table instead of individual rows
+  // This reduces database size from ~91 rows per job to 1 JSONB field
   async saveCellData(jobId, gridData) {
-    // First, delete existing cell capacities for this job
-    await supabase
-      .from('battery_cell_capacities')
-      .delete()
-      .eq('optimization_job_id', jobId)
-
-    // Prepare cell capacity data for insertion
-    const cellDataArray = []
-    gridData.forEach((row, seriesIndex) => {
-      row.forEach((value, parallelIndex) => {
-        const cell = (value && typeof value === 'object') ? value : { ah: value }
-        const capacity = Number.isFinite(cell?.ah) ? cell.ah : null
-        const voltage = Number.isFinite(cell?.v) ? cell.v : null
-
-        if (capacity !== null) {
-          cellDataArray.push({
-            optimization_job_id: jobId,
-            series_index: seriesIndex,
-            parallel_index: parallelIndex,
-            capacity_mah: capacity,
-            voltage: voltage
-          })
-        }
-      })
-    })
-
-    if (cellDataArray.length > 0) {
-      const { error } = await supabase
-        .from('battery_cell_capacities')
-        .insert(cellDataArray)
-      
-      if (error) throw error
+    // Convert grid to compact JSONB format
+    // Format: { "grid": [{"row": 0, "cells": [{"ah": 100, "v": 3.2}, ...]}, ...] }
+    // Cells array preserves parallel index positions (null for empty cells)
+    const gridJson = {
+      grid: gridData.map((row, seriesIndex) => {
+        const cells = row.map((value) => {
+          const cell = (value && typeof value === 'object') ? value : { ah: value }
+          const capacity = Number.isFinite(cell?.ah) ? cell.ah : null
+          const voltage = Number.isFinite(cell?.v) ? cell.v : null
+          
+          // Only include non-null values to save space
+          if (capacity === null && voltage === null) return null
+          
+          const cellObj = {}
+          if (capacity !== null) cellObj.ah = capacity
+          if (voltage !== null) cellObj.v = voltage
+          
+          return cellObj
+        })
+        
+        // Only include row if it has at least one cell with data
+        const hasData = cells.some(cell => cell !== null)
+        return hasData ? { row: seriesIndex, cells } : null
+      }).filter(row => row !== null) // Remove empty rows
     }
+
+    // Update the job with cell_data JSONB column
+    const { error } = await supabase
+      .from('battery_optimization_jobs')
+      .update({ cell_data: gridJson })
+      .eq('id', jobId)
+    
+    if (error) throw error
     
     return true
   },
 
   async getCellData(jobId) {
+    // First try to get from optimized JSONB column
+    const { data: jobData, error: jobError } = await supabase
+      .from('battery_optimization_jobs')
+      .select('cell_data, series_count, parallel_count')
+      .eq('id', jobId)
+      .single()
+    
+    if (jobError) throw jobError
+    
+    // If cell_data exists, use it (optimized format)
+    if (jobData?.cell_data?.grid) {
+      const S = jobData.series_count || 13
+      const P = jobData.parallel_count || 7
+      const grid = jobData.cell_data.grid
+      
+      // Create a map for quick lookup: row index -> cells array
+      const rowMap = new Map()
+      grid.forEach((rowData) => {
+        rowMap.set(rowData.row, rowData.cells)
+      })
+      
+      // Convert to old format for compatibility with existing code
+      const cellDataArray = []
+      for (let seriesIndex = 0; seriesIndex < S; seriesIndex++) {
+        const cells = rowMap.get(seriesIndex) || []
+        for (let parallelIndex = 0; parallelIndex < P; parallelIndex++) {
+          const cell = cells[parallelIndex]
+          if (cell && Number.isFinite(cell.ah)) {
+            cellDataArray.push({
+              optimization_job_id: jobId,
+              series_index: seriesIndex,
+              parallel_index: parallelIndex,
+              capacity_mah: cell.ah,
+              voltage: cell.v || null
+            })
+          }
+        }
+      }
+      
+      return cellDataArray
+    }
+    
+    // Fallback to old table format (for backward compatibility)
     const { data, error } = await supabase
       .from('battery_cell_capacities')
       .select('*')
@@ -143,7 +188,7 @@ export const db = {
       .order('parallel_index', { ascending: true })
     
     if (error) throw error
-    return data
+    return data || []
   },
 
   // Workflow functions

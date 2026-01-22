@@ -13,7 +13,12 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- 1. ORGANIZATIONS TABLE
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS organizations (
+-- Drop existing tables if they exist (to handle schema changes)
+DROP TABLE IF EXISTS user_branch_map CASCADE;
+DROP TABLE IF EXISTS branches CASCADE;
+DROP TABLE IF EXISTS organizations CASCADE;
+
+CREATE TABLE organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   code TEXT UNIQUE,
@@ -47,7 +52,7 @@ CREATE POLICY "Admins manage organizations" ON organizations
 -- 2. BRANCHES TABLE
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS branches (
+CREATE TABLE branches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -87,7 +92,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS branches_org_code_idx ON branches(organization
 -- 3. USER BRANCH MAP
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS user_branch_map (
+CREATE TABLE user_branch_map (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
@@ -102,6 +107,7 @@ ALTER TABLE user_branch_map ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users view own branch map" ON user_branch_map;
 DROP POLICY IF EXISTS "Admins view all branch map" ON user_branch_map;
+DROP POLICY IF EXISTS "Users can insert own branch map" ON user_branch_map;
 DROP POLICY IF EXISTS "Admins manage branch map" ON user_branch_map;
 
 CREATE POLICY "Users view own branch map" ON user_branch_map
@@ -112,8 +118,16 @@ CREATE POLICY "Admins view all branch map" ON user_branch_map
     auth.uid() = user_id OR is_current_user_admin()
   );
 
+-- Allow users to insert their own branch assignments (for auto-assignment)
+CREATE POLICY "Users can insert own branch map" ON user_branch_map
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Only admins can update/delete branch assignments
 CREATE POLICY "Admins manage branch map" ON user_branch_map
-  FOR ALL USING (is_current_user_admin());
+  FOR UPDATE USING (is_current_user_admin());
+
+CREATE POLICY "Admins can delete branch map" ON user_branch_map
+  FOR DELETE USING (is_current_user_admin());
 
 CREATE INDEX IF NOT EXISTS user_branch_map_user_idx ON user_branch_map(user_id);
 CREATE INDEX IF NOT EXISTS user_branch_map_branch_idx ON user_branch_map(branch_id);

@@ -19,8 +19,12 @@
 -- 1. CREATE USER ROLES TABLE
 -- ============================================
 
+-- Drop existing table if it exists (to handle schema changes)
+-- This ensures we start with a clean slate
+DROP TABLE IF EXISTS user_roles CASCADE;
+
 -- User Roles table: Stores role assignments for users
-CREATE TABLE IF NOT EXISTS user_roles (
+CREATE TABLE user_roles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   role TEXT NOT NULL DEFAULT 'user',
@@ -34,8 +38,11 @@ CREATE TABLE IF NOT EXISTS user_roles (
 -- 2. CREATE ROLE PERMISSIONS TABLE
 -- ============================================
 
+-- Drop existing table if it exists (to handle schema changes)
+DROP TABLE IF EXISTS role_permissions CASCADE;
+
 -- Role Permissions table: Defines what permissions each role has
-CREATE TABLE IF NOT EXISTS role_permissions (
+CREATE TABLE role_permissions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   role TEXT NOT NULL,
   permission TEXT NOT NULL,
@@ -89,9 +96,12 @@ ALTER TABLE role_permissions ENABLE ROW LEVEL SECURITY;
 -- 6. CREATE HELPER FUNCTIONS FOR POLICIES (BEFORE POLICIES)
 -- ============================================
 
+-- Drop existing function if it exists
+DROP FUNCTION IF EXISTS is_current_user_admin();
+
 -- Function to check if current user is admin (bypasses RLS to avoid recursion)
 -- This function uses SECURITY DEFINER to bypass RLS when checking admin status
-CREATE OR REPLACE FUNCTION is_current_user_admin()
+CREATE FUNCTION is_current_user_admin()
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
@@ -162,8 +172,14 @@ CREATE POLICY "Admins can manage permissions" ON role_permissions
 -- 8. CREATE HELPER FUNCTIONS (for application use)
 -- ============================================
 
+-- Drop existing functions if they exist
+DROP FUNCTION IF EXISTS user_has_role(UUID, TEXT);
+DROP FUNCTION IF EXISTS current_user_has_role(TEXT);
+DROP FUNCTION IF EXISTS user_has_permission(UUID, TEXT, TEXT);
+DROP FUNCTION IF EXISTS get_user_role(UUID);
+
 -- Function to check if user has a specific role
-CREATE OR REPLACE FUNCTION user_has_role(check_user_id UUID, check_role TEXT)
+CREATE FUNCTION user_has_role(check_user_id UUID, check_role TEXT)
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
@@ -175,7 +191,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to check if current user has a specific role
-CREATE OR REPLACE FUNCTION current_user_has_role(check_role TEXT)
+CREATE FUNCTION current_user_has_role(check_role TEXT)
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
@@ -187,7 +203,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to check if user has a specific permission
-CREATE OR REPLACE FUNCTION user_has_permission(check_user_id UUID, check_permission TEXT, check_resource TEXT DEFAULT NULL)
+CREATE FUNCTION user_has_permission(check_user_id UUID, check_permission TEXT, check_resource TEXT DEFAULT NULL)
 RETURNS BOOLEAN AS $$
 DECLARE
   user_role TEXT;
@@ -220,7 +236,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to get user's role
-CREATE OR REPLACE FUNCTION get_user_role(check_user_id UUID)
+CREATE FUNCTION get_user_role(check_user_id UUID)
 RETURNS TEXT AS $$
 DECLARE
   user_role TEXT;

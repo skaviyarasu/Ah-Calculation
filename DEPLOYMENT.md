@@ -8,7 +8,7 @@
 
 Required variables:
 ```env
-VITE_SUPABASE_URL=https://aswjfohpdtbordfpdfqk.supabase.co
+VITE_SUPABASE_URL=https://ccztkyejfkjamlutcjns.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key_here
 ```
 

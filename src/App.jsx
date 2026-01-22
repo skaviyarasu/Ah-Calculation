@@ -191,6 +191,8 @@ function buildTableAOA(grid, S, P, stats, metadata = null) {
   const totalsAH = stats?.totalsAH ?? [];
   const totalsVoltage = stats?.totalsVoltage ?? [];
   const averageVoltages = stats?.averageVoltages ?? [];
+  const spread = stats?.spread ?? null;
+  const voltageDifference = stats?.voltageDifference ?? null;
   const aoa = [];
   
   // Add metadata header if provided
@@ -202,6 +204,14 @@ function buildTableAOA(grid, S, P, stats, metadata = null) {
     aoa.push(["Job Card #:", metadata.jobCard || ""]);
     aoa.push(["Date:", metadata.jobDate || ""]);
     aoa.push(["Battery Spec:", metadata.batterySpec || ""]);
+    aoa.push([""]);
+    // Add Ah Spread and Voltage Difference to metadata
+    if (isFiniteNumber(spread)) {
+      aoa.push(["Ah Spread (mAh):", Math.round(spread)]);
+    }
+    if (isFiniteNumber(voltageDifference)) {
+      aoa.push(["Voltage Difference (V):", voltageDifference.toFixed(3)]);
+    }
     aoa.push([""]);
     aoa.push(["Capacity Matrix (mAh):"]);
     aoa.push([""]);
@@ -760,7 +770,13 @@ export default function App() {
   function exportCSV() {
     try {
       const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-      const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
+      const aoa = buildTableAOA(grid, S, P, { 
+        totalsAH, 
+        totalsVoltage, 
+        averageVoltages, 
+        spread, 
+        voltageDifference: rowVoltageExtremes.diff 
+      }, metadata);
       const csv = aoa.map((row) => row.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -780,7 +796,13 @@ export default function App() {
 
   function copyTableCSV() {
     const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-    const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
+    const aoa = buildTableAOA(grid, S, P, { 
+      totalsAH, 
+      totalsVoltage, 
+      averageVoltages, 
+      spread, 
+      voltageDifference: rowVoltageExtremes.diff 
+    }, metadata);
     const text = aoa.map((row) => row.join(",")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as CSV."));
     else {
@@ -791,7 +813,13 @@ export default function App() {
 
   function copyTableTSV() {
     const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-    const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
+    const aoa = buildTableAOA(grid, S, P, { 
+      totalsAH, 
+      totalsVoltage, 
+      averageVoltages, 
+      spread, 
+      voltageDifference: rowVoltageExtremes.diff 
+    }, metadata);
     const text = aoa.map((row) => row.join("\t")).join("\n");
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => alert("Table copied as TSV."));
     else {
@@ -804,7 +832,13 @@ export default function App() {
     try {
       // Always use grid data for accurate values (DOM table can't read input values properly)
       const metadata = { serialNumber, customerName, jobCard, jobDate, batterySpec };
-      const aoa = buildTableAOA(grid, S, P, { totalsAH, totalsVoltage, averageVoltages }, metadata);
+      const aoa = buildTableAOA(grid, S, P, { 
+        totalsAH, 
+        totalsVoltage, 
+        averageVoltages, 
+        spread, 
+        voltageDifference: rowVoltageExtremes.diff 
+      }, metadata);
       const wsBefore = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, wsBefore, "Report");
