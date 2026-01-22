@@ -11,6 +11,29 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Current values:', { supabaseUrl: !!supabaseUrl, supabaseAnonKey: !!supabaseAnonKey })
 }
 
+// Clear old auth state if Supabase URL has changed
+// Supabase stores auth tokens in localStorage with the URL as part of the key
+if (typeof window !== 'undefined') {
+  const oldUrl = 'aswjfohpdtbordfpdfqk.supabase.co'
+  
+  // Clear all localStorage keys that contain the old URL
+  const storageKeys = Object.keys(localStorage)
+  storageKeys.forEach(key => {
+    if (key.includes('supabase') && key.includes(oldUrl)) {
+      localStorage.removeItem(key)
+      console.log('🔄 Removed old auth key:', key)
+    }
+  })
+  
+  // Clear sessionStorage too
+  const sessionKeys = Object.keys(sessionStorage)
+  sessionKeys.forEach(key => {
+    if (key.includes('supabase') && key.includes(oldUrl)) {
+      sessionStorage.removeItem(key)
+    }
+  })
+}
+
 // Create Supabase client (will handle empty values gracefully)
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',

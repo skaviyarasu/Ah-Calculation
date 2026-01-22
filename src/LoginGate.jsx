@@ -26,16 +26,44 @@ useEffect(() => {
       return;
     }
 
+    // Clear old auth state if URL changed (one-time cleanup)
+    const oldUrl = 'https://aswjfohpdtbordfpdfqk.supabase.co'
+    if (supabaseUrl !== oldUrl) {
+      // Clear any localStorage keys from old URL
+      const storageKeys = Object.keys(localStorage)
+      storageKeys.forEach(key => {
+        if (key.includes('supabase') && key.includes('aswjfohpdtbordfpdfqk')) {
+          localStorage.removeItem(key)
+        }
+      })
+      // Clear sessionStorage too
+      const sessionKeys = Object.keys(sessionStorage)
+      sessionKeys.forEach(key => {
+        if (key.includes('supabase') && key.includes('aswjfohpdtbordfpdfqk')) {
+          sessionStorage.removeItem(key)
+        }
+      })
+    }
+
     // Get initial session
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
+        // If error is due to old URL, clear and retry
+        if (error.message?.includes('aswjfohpdtbordfpdfqk') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+          console.log('🔄 Clearing old auth state due to URL change')
+          await supabase.auth.signOut()
+        }
       }
       setIsAuthenticated(!!session);
       setCurrentUser(session?.user ?? null);
       setLoading(false);
     }).catch((error) => {
       console.error('Failed to get session:', error);
+      // Clear old auth state on error
+      if (error.message?.includes('aswjfohpdtbordfpdfqk') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+        supabase.auth.signOut().catch(() => {})
+      }
       setLoading(false);
     });
 
