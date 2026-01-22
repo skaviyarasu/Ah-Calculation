@@ -14,10 +14,26 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 
 ### 2. Platform-Specific Setup
 
-#### Vercel
-1. Go to Project Settings → Environment Variables
-2. Add both variables above
-3. Redeploy
+#### Vercel (GitHub Auto-Deployment)
+**Note**: If Vercel auto-deploys from GitHub, environment variables are still set in Vercel Dashboard.
+
+1. Go to your project on Vercel Dashboard
+2. Click **Settings** tab → **Environment Variables** (left sidebar)
+3. Click **"Add New"** and add:
+   - **Name**: `VITE_SUPABASE_URL`
+   - **Value**: `https://ccztkyejfkjamlutcjns.supabase.co`
+   - **Environments**: Select Production, Preview, and Development (all three)
+   - Click **Save**
+4. Add second variable:
+   - **Name**: `VITE_SUPABASE_ANON_KEY`
+   - **Value**: `sb_publishable_fBZ7xV-W48lKITHc9GKBPg_I95RU4I9`
+   - **Environments**: Select Production, Preview, and Development (all three)
+   - Click **Save**
+5. **IMPORTANT**: Trigger a new deployment:
+   - **Option A**: Push a new commit to GitHub (Vercel will auto-deploy)
+   - **Option B**: Go to **Deployments** tab → Click **"..."** on latest deployment → **Redeploy**
+   
+   ⚠️ **You MUST redeploy after adding environment variables!** Variables are loaded at build time.
 
 #### Netlify
 1. Go to Site Settings → Build & Deploy → Environment

@@ -14,7 +14,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // Create Supabase client (will handle empty values gracefully)
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  }
 )
 
 // Database helper functions
