@@ -4,6 +4,15 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+// Log the URL being used (for debugging)
+if (typeof window !== 'undefined') {
+  console.log('🔍 Supabase URL from env:', supabaseUrl)
+  console.log('🔍 Expected URL: https://ccztkyejfkjamlutcjns.supabase.co')
+  if (supabaseUrl && !supabaseUrl.includes('ccztkyejfkjamlutcjns')) {
+    console.warn('⚠️ WARNING: Supabase URL does not match expected new URL!')
+  }
+}
+
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Missing Supabase environment variables!')
@@ -11,30 +20,55 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Current values:', { supabaseUrl: !!supabaseUrl, supabaseAnonKey: !!supabaseAnonKey })
 }
 
-// Clear old auth state if Supabase URL has changed
+// AGGRESSIVE cleanup of old auth state
 // Supabase stores auth tokens in localStorage with the URL as part of the key
 if (typeof window !== 'undefined' && supabaseUrl) {
   const currentUrl = supabaseUrl.replace(/https?:\/\//, '').replace(/\/$/, '')
+  const oldUrlPattern = 'aswjfohpdtbordfpdfqk'
   
-  // Clear all localStorage keys that don't match current URL
+  console.log('🧹 Cleaning up old auth state...')
+  console.log('🧹 Current URL pattern:', currentUrl)
+  
+  // Clear ALL Supabase-related keys that contain the old URL
   const storageKeys = Object.keys(localStorage)
+  let clearedCount = 0
   storageKeys.forEach(key => {
+    // Clear if it contains old URL
+    if (key.includes(oldUrlPattern)) {
+      localStorage.removeItem(key)
+      console.log('🔄 Removed old URL key:', key)
+      clearedCount++
+    }
+    // Also clear if it's Supabase auth but doesn't match current URL
     if (key.includes('supabase') && key.includes('supabase.co') && !key.includes(currentUrl)) {
       localStorage.removeItem(key)
       console.log('🔄 Removed mismatched auth key:', key)
+      clearedCount++
     }
   })
   
   // Clear sessionStorage too
   const sessionKeys = Object.keys(sessionStorage)
   sessionKeys.forEach(key => {
-    if (key.includes('supabase') && key.includes('supabase.co') && !key.includes(currentUrl)) {
+    if (key.includes(oldUrlPattern) || (key.includes('supabase') && key.includes('supabase.co') && !key.includes(currentUrl))) {
       sessionStorage.removeItem(key)
+      clearedCount++
     }
   })
+  
+  if (clearedCount > 0) {
+    console.log(`✅ Cleared ${clearedCount} old auth keys`)
+  } else {
+    console.log('✅ No old auth keys found')
+  }
 }
 
 // Create Supabase client (will handle empty values gracefully)
+// IMPORTANT: This client uses the URL from environment variables
+// If you see old URL in requests, check:
+// 1. .env.local file has correct VITE_SUPABASE_URL
+// 2. Dev server was restarted after changing .env.local
+// 3. Browser localStorage was cleared (done above)
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-key',
@@ -42,7 +76,9 @@ export const supabase = createClient(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true
+      detectSessionInUrl: true,
+      // Force storage key to use current URL
+      storageKey: supabaseUrl ? `sb-${supabaseUrl.replace(/https?:\/\//, '').replace(/\/$/, '').replace(/\./g, '-')}-auth-token` : 'sb-auth-token'
     },
     realtime: {
       params: {
@@ -51,6 +87,18 @@ export const supabase = createClient(
     }
   }
 )
+
+// Log the actual URL the client will use
+if (typeof window !== 'undefined' && supabaseUrl) {
+  console.log('✅ Supabase client created with URL:', supabaseUrl)
+  // Verify the URL is correct
+  if (supabaseUrl.includes('aswjfohpdtbordfpdfqk')) {
+    console.error('❌ ERROR: Environment variable still has old URL!', supabaseUrl)
+    console.error('❌ Please update .env.local and restart the dev server!')
+  } else if (supabaseUrl.includes('ccztkyejfkjamlutcjns')) {
+    console.log('✅ Correct URL detected:', supabaseUrl)
+  }
+}
 
 // Database helper functions
 export const db = {
@@ -287,12 +335,37 @@ export const auth = {
   },
 
   async signIn(email, password) {
+    // Log the URL being used for login (for debugging)
+    console.log('🔐 Attempting login with Supabase URL:', supabaseUrl)
+    
+    if (supabaseUrl && supabaseUrl.includes('aswjfohpdtbordfpdfqk')) {
+      console.error('❌ ERROR: Login attempted with old URL!')
+      throw new Error('Supabase URL is incorrect. Please check your .env.local file and restart the dev server.')
+    }
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     })
     
-    if (error) throw error
+    if (error) {
+      // If error contains old URL, it means there's a cached refresh token
+      if (error.message?.includes('aswjfohpdtbordfpdfqk') || error.message?.includes('ERR_NAME_NOT_RESOLVED')) {
+        console.error('❌ Login error with old URL detected. Clearing all auth state...')
+        // Clear all auth state
+        if (typeof window !== 'undefined') {
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('supabase')) localStorage.removeItem(key)
+          })
+          Object.keys(sessionStorage).forEach(key => {
+            if (key.includes('supabase')) sessionStorage.removeItem(key)
+          })
+        }
+        await supabase.auth.signOut()
+        throw new Error('Old Supabase URL detected. Please refresh the page and try again.')
+      }
+      throw error
+    }
     return data
   },
 
