@@ -1,0 +1,10 @@
+global:
+  default_action: drop_unmatched
+steps:
+  - name: "Mid-CC"
+    filter: { col: "CC_Ratio", between: [0.85, 0.9] }
+  - name: "Mid-IR-strings"
+    filter: { col: "IR_Value", between: ["20", "40.5"], op: "ignored-when-between" }
+  - name: "Low-Volt"
+    filter: { col: "Voltage", between: [3.5, 3.6] }
+    then: { action: drop }

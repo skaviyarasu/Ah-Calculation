@@ -1,0 +1,18 @@
+# once: false overwrites earlier labels; set can override the group column.
+steps:
+  - name: "First"
+    filter: { col: "CC_Ratio", op: ">=", value: 0.85 }
+    then:
+      set: { Tier: 1, Score: 0.5, Checked: true }
+  - name: "Override-High-IR"
+    once: false
+    filter: { col: "IR_Value", op: ">", value: 60 }
+    then:
+      set: { Category: "High-IR", Tier: 3.0 }
+  - name: "Late-Once"
+    filter: { col: "Capacity_Retention", op: ">", value: 0.95 }
+    then:
+      set: { Tier: "late" }
+  - name: "Null-Once"
+    once: null                                         # null is falsy in Python -> overwrite
+    filter: { col: "IR_Value", op: "<", value: 12 }

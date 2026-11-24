@@ -1,0 +1,8 @@
+# Regex across the row on the very first step: the frame is still all-original columns,
+# so pandas' row dtype upcasting (int -> "8.0" in an all-numeric row) matters.
+steps:
+  - name: "Row-Has-Dot-Zero"
+    filter: { regex: '\.0\b' }
+  - name: "Row-Has-nan"
+    filter: { regex: "nan" }
+  - name: "Other"

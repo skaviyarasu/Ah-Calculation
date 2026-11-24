@@ -4,6 +4,7 @@ import App from "./App";
 import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
 import AccountingDashboard from "./components/AccountingDashboard";
+import CellGrouping from "./components/CellGrouping";
 import { useRole } from "./hooks/useRole";
 import { useBranch } from "./hooks/useBranch";
 
@@ -35,6 +36,7 @@ function MainApp() {
   const navigationItems = useMemo(() => (
     [
       { id: "ah-balancer", label: "Job Optimizer", description: "Interactive 13SxP Balancer" },
+      { id: "cell-grouping", label: "Cell Grouping", description: "YAML rule-based cell grading" },
       ...(canViewInventory ? [
         { id: "inventory", label: "Inventory", description: "Stock & Item Directory" },
         { id: "accounting", label: "Accounting", description: "Sales, Purchases & Financials" }
@@ -161,6 +163,7 @@ function MainApp() {
             className="mx-auto w-full max-w-7xl px-6 py-10"
           >
             {currentView === "ah-balancer" && <App />}
+            {currentView === "cell-grouping" && <CellGrouping />}
             {currentView === "inventory" && <InventoryManagement />}
             {currentView === "accounting" && <AccountingDashboard />}
             {currentView === "admin" && isAdmin ? (

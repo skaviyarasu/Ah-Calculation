@@ -1,0 +1,37 @@
+global:
+  default_action: keep_unmatched
+
+steps:
+  - name: "Grade-A"
+    filter:
+      all:
+        - { col: "CC_Ratio", op: ">=", value: 0.90 }
+        - { col: "Capacity_Retention", op: ">=", value: 0.95 }
+        - { col: "IR_Value", op: "<=", value: 20 }
+    then:
+      action: keep
+      set:
+        Grade: "A"
+
+  - name: "Drop-High-IR"
+    filter:
+      any:
+        - { col: "IR_Value", op: ">", value: 80 }
+    then:
+      action: drop
+
+  - name: "Grade-B"
+    filter:
+      all:
+        - { col: "CC_Ratio", op: ">=", value: 0.85 }
+        - { col: "IR_Value", op: "<=", value: 40 }
+    then:
+      action: keep
+      set:
+        Grade: "B"
+
+  - name: "Label-Remaining"
+    then:
+      action: keep
+      set:
+        Grade: "Unassigned"

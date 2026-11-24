@@ -1,0 +1,18 @@
+steps:
+  - name: "Regex-Row"
+    filter: { regex: 'fail\b.*b3', case_insensitive: true }   # whole row joined with spaces
+  - name: "Regex-Col"
+    filter: { col: "Cell_ID", regex: "^[CM]01[0-4]" }
+  - name: "Ends-X"
+    filter: { col: "Batch", op: "endswith", value: "-X" }
+  - name: "Number-Text"
+    filter: { col: "IR_Value", op: "startswith", value: 9 }
+  - name: "Contains-Pass-CI"
+    filter: { col: "Status", op: "contains", value: "pass", case_insensitive: true }
+  - name: "Tilde-Regex"
+    filter: { col: "Batch", op: "~", value: "B[23]" }
+  - name: "Starts-C00"
+    filter: { col: "Cell_ID", op: "startswith", value: "C00" }
+  - name: "Begins-ci"
+    filter: { col: "Status", op: "beginswith", value: "f", case_insensitive: true }
+  - name: "Rest"

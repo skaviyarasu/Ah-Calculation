@@ -1,0 +1,14 @@
+/** Public API of the cell-grouping module. */
+export { parseRules, parseRulesText } from './loadRules.ts';
+export { normalizeRules } from './normalize.ts';
+export type { NormalizeResult, RuleIssue } from './normalize.ts';
+export { applySteps, outputTable, summarizeGroups, DEFAULT_GROUP_COL } from './engine.ts';
+export type { GroupSummary } from './engine.ts';
+export { readWorkbook, exportResults, buildResultWorkbook, labelText } from './excel.ts';
+export type { Workbook } from './excel.ts';
+export { frameFromGrid } from './frame.ts';
+export { readCsv, resultToCsv, frameToCsv, parseCsvRows } from './csv.ts';
+export type { CsvReadOptions, CsvWriteOptions } from './csv.ts';
+export { RuleEvaluationError, SUPPORTED_OPS } from './conditions.ts';
+export { PyFloat } from './types.ts';
+export type * from './types.ts';
