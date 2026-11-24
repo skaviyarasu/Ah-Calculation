@@ -10,7 +10,20 @@ export { frameFromGrid } from './frame.ts';
 export { readCsv, resultToCsv, frameToCsv, parseCsvRows } from './csv.ts';
 export type { CsvReadOptions, CsvWriteOptions } from './csv.ts';
 export { RuleEvaluationError, SUPPORTED_OPS } from './conditions.ts';
-export { preprocessExcel, preprocessGrid, dropMatchingRows, gridToCsvText, PreprocessError } from './preprocess.ts';
+export { preprocessExcel, preprocessSheetRows, preprocessGrid, dropMatchingRows, gridToCsvText, PreprocessError } from './preprocess.ts';
+export {
+  convertBatch,
+  isPerCellReport,
+  machineColumns,
+  machineSheetRows,
+  flattenedNames,
+  batchFileStem,
+  batchPreprocess,
+  LFP_CONSTANTS,
+  LFP_EXTRA_COLUMNS,
+} from './lfpConvert.ts';
+export type { BatchResult, ConvertedReport, ReportInput, TableCell, LfpConstants } from './lfpConvert.ts';
+export { readReportTable, readReportInputs, batchToXlsx, batchToCsv } from './reportFiles.ts';
 export type { PreprocessedFile } from './preprocess.ts';
 export { CHEMISTRIES, missingRuleColumns } from './chemistry.ts';
 export type { Chemistry, PublishedRules } from './chemistry.ts';

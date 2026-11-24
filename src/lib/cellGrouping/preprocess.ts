@@ -153,6 +153,17 @@ export function dropMatchingRows(grid: string[][], pre: Preprocess): { grid: str
  * laid out like a raw export (column count matches the header, header row has no readings) is
  * used, so summary or pivot sheets in front of the data are skipped.
  */
+function finishPreprocess(shaped: string[][], pre: Preprocess): Omit<PreprocessedFile, 'sheetName'> {
+  const { grid, dropped } = dropMatchingRows(shaped, pre);
+  const csvText = gridToCsvText(grid);
+  return { csvText, frame: readCsv(csvText), droppedRows: dropped };
+}
+
+/** Same as preprocessExcel, for a sheet already in memory as rows of text (e.g. a converted LFP batch). */
+export function preprocessSheetRows(rows: string[][], pre: Preprocess, sheetName = 'Sheet1'): PreprocessedFile {
+  return { ...finishPreprocess(preprocessGrid(rows, pre), pre), sheetName };
+}
+
 export function preprocessExcel(data: ArrayBuffer | Uint8Array, pre: Preprocess, sheetName?: string): PreprocessedFile {
   const wb = XLSX.read(data, { type: 'array', cellText: true, cellDates: false, cellFormula: false, cellHTML: false });
   const candidates = sheetName !== undefined ? [sheetName] : wb.SheetNames;
@@ -168,9 +179,7 @@ export function preprocessExcel(data: ArrayBuffer | Uint8Array, pre: Preprocess,
       problems.push({ name, error: e });
       continue;
     }
-    const { grid, dropped } = dropMatchingRows(shaped, pre);
-    const csvText = gridToCsvText(grid);
-    return { csvText, frame: readCsv(csvText), droppedRows: dropped, sheetName: name };
+    return { ...finishPreprocess(shaped, pre), sheetName: name };
   }
   if (problems.length === 1) throw problems[0].error;
   throw new PreprocessError(

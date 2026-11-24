@@ -8,10 +8,12 @@ export interface Chemistry {
   id: string;
   label: string;
   description: string;
+  /** Accepts per-cell time-series reports (one file per cell), converted to the machine layout. */
+  perCellReports?: boolean;
 }
 
 export const CHEMISTRIES: readonly Chemistry[] = [
-  { id: 'LFP', label: 'LFP', description: 'Lithium iron phosphate' },
+  { id: 'LFP', label: 'LFP', description: 'Lithium iron phosphate', perCellReports: true },
   { id: 'NMC', label: 'NMC', description: 'Nickel manganese cobalt' },
 ];
 

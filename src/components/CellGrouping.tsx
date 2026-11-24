@@ -1,26 +1,37 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   applySteps,
+  batchFileStem,
+  batchPreprocess,
+  batchToCsv,
+  batchToXlsx,
   CHEMISTRIES,
+  convertBatch,
   DEFAULT_GROUP_COL,
   exportResults,
+  isPerCellReport,
   labelText,
   missingRuleColumns,
   parseRules,
+  machineSheetRows,
   preprocessExcel,
+  preprocessSheetRows,
   PyFloat,
   readCsv,
+  readReportInputs,
   readWorkbook,
   resultToCsv,
   summarizeGroups,
 } from '../lib/cellGrouping/index.ts';
 import type {
+  BatchResult,
   Cell,
   GroupingResult,
   GroupSummary,
   NormalizeResult,
   Preprocess,
   PublishedRules,
+  ReportInput,
   RuleSet,
   Workbook,
 } from '../lib/cellGrouping/index.ts';
@@ -135,17 +146,32 @@ const primaryButton =
   'rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground shadow-layer-sm disabled:cursor-not-allowed disabled:opacity-40';
 const secondaryButton = 'rounded-full border border-white/40 bg-white/70 px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40';
 
-function FilePicker({ label, accept, onFile }: { label: React.ReactNode; accept: string; onFile: (f: File) => void }) {
+function FilePicker({
+  label,
+  accept,
+  onFile,
+  onFiles,
+  multiple = false,
+}: {
+  label: React.ReactNode;
+  accept: string;
+  onFile?: (f: File) => void;
+  /** Receives every selected file (use with `multiple`). */
+  onFiles?: (fs: File[]) => void;
+  multiple?: boolean;
+}) {
   return (
     <label className={dropZone}>
       {label}
       <input
         type="file"
         accept={accept}
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFile(f);
+          const fs = Array.from(e.target.files ?? []);
+          if (fs.length && onFiles) onFiles(fs);
+          else if (fs[0] && onFile) onFile(fs[0]);
           e.target.value = '';
         }}
       />
@@ -272,6 +298,8 @@ function ReportProcessor({
   const [workbook, setWorkbook] = useState<Workbook | null>(null);
   const [dataName, setDataName] = useState('');
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null);
+  /** Set when the upload is a set of per-cell reports (LFP) instead of one machine export. */
+  const [perCell, setPerCell] = useState<ReportInput[] | null>(null);
   const [sheetName, setSheetName] = useState('');
   const [groupCol, setGroupCol] = useState(DEFAULT_GROUP_COL);
   const [result, setResult] = useState<GroupingResult | null>(null);
@@ -282,6 +310,8 @@ function ReportProcessor({
     preprocessed?: { csvText: string; pre: Preprocess; droppedRows: number; sheetName: string; sheetCount: number };
     /** An Excel file was read as-is because the rules have no `preprocess:` block. */
     excelWithoutPreprocess?: boolean;
+    /** Per-cell reports converted to the machine layout (LFP). */
+    conversion?: { batch: BatchResult; names: string[] };
   } | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -298,6 +328,24 @@ function ReportProcessor({
     setResult(null);
     setResultInfo(null);
     setMissing([]);
+  };
+
+  /** One machine export, or several per-cell reports (LFP), which are converted when processing. */
+  const onDataFiles = async (files: File[]) => {
+    setError('');
+    clearResult();
+    const read = await Promise.all(files.map(async (f) => ({ name: f.name, data: new Uint8Array(await f.arrayBuffer()) })));
+    const inputs = readReportInputs(read);
+    if (files.length > 1 || inputs.some((i) => i.table && isPerCellReport(i.table))) {
+      setPerCell(inputs);
+      setWorkbook(null);
+      setFileBytes(null);
+      setSheetName('');
+      setDataName(files.length === 1 ? files[0].name : `${files.length} per-cell reports`);
+      return;
+    }
+    setPerCell(null);
+    await onDataFile(files[0]);
   };
 
   const onDataFile = async (file: File) => {
@@ -340,7 +388,7 @@ function ReportProcessor({
   const run = async () => {
     setError('');
     clearResult();
-    if (!chemistry || !workbook) return;
+    if (!chemistry || (!workbook && !perCell)) return;
     setBusy(true);
     try {
       const latest = (await reload())[chemistry];
@@ -350,6 +398,24 @@ function ReportProcessor({
       // Excel files are preprocessed when the chemistry's rules say so (convert to CSV, remove rows,
       // replace the header); CSV files are taken as already preprocessed, like the Python script.
       const pre = latestParsed.rules.preprocess;
+      if (perCell) {
+        if (!chem?.perCellReports) {
+          const allowed = CHEMISTRIES.filter((c) => c.perCellReports)
+            .map((c) => c.label)
+            .join(' / ');
+          throw new Error(`Per-cell reports can only be processed as ${allowed}. Select the right chemistry, or upload one grading-machine export.`);
+        }
+        // Convert to the machine layout, then read it exactly like a machine export of this chemistry.
+        const batch = convertBatch(perCell);
+        const batchPre = batchPreprocess(batch, pre);
+        const out = preprocessSheetRows(machineSheetRows(batch), batchPre);
+        setMissing(missingRuleColumns(latestParsed.rules, out.frame));
+        setResult(applySteps(out.frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
+        setResultInfo({ chemistry, rules: latest, conversion: { batch, names: batchPre.header ?? [] } });
+        setActiveGroup(0);
+        return;
+      }
+      if (!workbook) return;
       const isCsv = /\.csv$/i.test(dataName);
       if (isCsv && pre) {
         throw new Error(`The ${chemistry} rules expect the raw grading-machine export (Excel .xlsx / .xls), not a CSV. Upload the raw machine file.`);
@@ -384,7 +450,16 @@ function ReportProcessor({
     </button>
   );
 
-  const stem = dataName.replace(/\.[^.]+$/, '') || 'cells';
+  const stem = resultInfo?.conversion ? batchFileStem(resultInfo.conversion.batch) : dataName.replace(/\.[^.]+$/, '') || 'cells';
+  /** Converted LFP batch in the grading machine's layout (4 header rows). */
+  const exportBatchXlsx = () => {
+    if (resultInfo?.conversion) downloadBytes(batchToXlsx(resultInfo.conversion.batch), `${stem}.xlsx`);
+  };
+  /** Converted LFP batch as CSV with one header row (the grouping column names). */
+  const exportBatchCsv = () => {
+    if (resultInfo?.conversion)
+      downloadBytes(batchToCsv(resultInfo.conversion.batch, resultInfo.conversion.names), `${stem}.csv`, 'text/csv;charset=utf-8');
+  };
   const exportExcel = () => {
     if (!result || !resultInfo) return;
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
@@ -416,7 +491,7 @@ function ReportProcessor({
     );
   }
 
-  const canRun = Boolean(parsed?.rules && workbook) && !busy;
+  const canRun = Boolean(parsed?.rules && (workbook || perCell)) && !busy;
   const kept = groups.filter((g) => !g.rejected);
   const tabs: Array<{ label: string; rows: number[]; rejected?: boolean }> = result
     ? [
@@ -479,16 +554,19 @@ function ReportProcessor({
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm">2. Upload the raw grading-machine export</p>
+          <p className="text-sm">2. Upload the raw grading-machine export{chem?.perCellReports ? ', or all per-cell reports of the batch' : ''}</p>
           <FilePicker
-            accept={advanced ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
-            onFile={onDataFile}
+            accept={advanced || chem?.perCellReports ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
+            multiple={Boolean(chem?.perCellReports)}
+            onFiles={onDataFiles}
             label={
               dataName ? (
                 <>
                   <span className="font-medium text-foreground">{dataName}</span>
                   <span className="mt-1 text-xs">click to replace</span>
                 </>
+              ) : chem?.perCellReports ? (
+                `Choose all ${chem.label} per-cell reports at once (.xls / .xlsx / .csv), or one machine export`
               ) : advanced ? (
                 'Choose the raw grading-machine export (.xlsx / .xls; .csv for testing)'
               ) : (
@@ -544,11 +622,11 @@ function ReportProcessor({
         </div>
         {!canRun && (
           <p className="text-xs text-muted-foreground">
-            {!chemistry && !workbook
+            {!chemistry && !workbook && !perCell
               ? 'Select LFP or NMC and upload the raw grading-machine export.'
               : !chemistry
                 ? 'Select LFP or NMC.'
-                : !workbook
+                : !workbook && !perCell
                   ? 'Upload the raw grading-machine export.'
                   : ''}
           </p>
@@ -577,6 +655,50 @@ function ReportProcessor({
             {dataName} · {resultInfo.chemistry}
             {advanced && ` · rules ${resultInfo.rules.file_name} (published ${formatDate(resultInfo.rules.uploaded_at)})`}
           </p>
+          {resultInfo.conversion && (
+            <div className="space-y-3 rounded-xl border border-white/40 bg-white/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm">
+                  <span className="font-medium">Per-cell reports:</span> {resultInfo.conversion.batch.reports.length} read ·{' '}
+                  <span className="text-emerald-700">{resultInfo.conversion.batch.converted} converted</span> ·{' '}
+                  <span className={resultInfo.conversion.batch.failed ? 'text-red-700' : ''}>{resultInfo.conversion.batch.failed} not converted</span>
+                </p>
+                <div className="flex gap-3 text-xs">
+                  <button type="button" onClick={exportBatchXlsx} className="text-accent hover:underline">
+                    Download batch (.xlsx, machine layout)
+                  </button>
+                  <button type="button" onClick={exportBatchCsv} className="text-accent hover:underline">
+                    Download batch (.csv)
+                  </button>
+                </div>
+              </div>
+              {resultInfo.conversion.batch.failed > 0 && (
+                <div className="overflow-auto">
+                  <p className="mb-1 text-xs text-muted-foreground">Not converted (these cells have empty values and are grouped as unmatched):</p>
+                  <table className="min-w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-muted-foreground">
+                        <th className="px-2 py-1">cell No.</th>
+                        <th className="px-2 py-1">File</th>
+                        <th className="px-2 py-1">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultInfo.conversion.batch.reports
+                        .filter((r) => r.error !== null)
+                        .map((r) => (
+                          <tr key={r.cellNo} className="border-t border-slate-100">
+                            <td className="px-2 py-1">{r.cellNo}</td>
+                            <td className="px-2 py-1">{r.fileName}</td>
+                            <td className="px-2 py-1 text-red-700">{r.error}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
           {resultInfo.preprocessed && (
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span>
