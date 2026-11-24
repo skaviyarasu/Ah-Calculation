@@ -7,12 +7,20 @@ import AccountingDashboard from "./components/AccountingDashboard";
 import CellGrouping from "./components/CellGrouping";
 import { useRole } from "./hooks/useRole";
 import { useBranch } from "./hooks/useBranch";
+import { useCellGroupingAccess } from "./hooks/useCellGroupingAccess";
+import { cellGrouping } from "./lib/supabase";
 
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const { isAdmin, loading, canViewInventory } = useRole();
+  const {
+    canManageRules,
+    canProcessReports,
+    loading: groupingLoading,
+  } = useCellGroupingAccess(isAdmin, loading);
+  const canUseCellGrouping = canManageRules || canProcessReports;
   const {
     currentBranch,
     loading: branchLoading,
@@ -25,6 +33,13 @@ function MainApp() {
     }
   }, [currentView, isAdmin, loading]);
 
+  // Redirect away from cell grouping if the user is neither admin nor operator
+  useEffect(() => {
+    if (currentView === "cell-grouping" && !groupingLoading && !canUseCellGrouping) {
+      setCurrentView("ah-balancer");
+    }
+  }, [currentView, canUseCellGrouping, groupingLoading]);
+
   // Redirect away from inventory/accounting views if user doesn't have permission
   useEffect(() => {
     const restrictedViews = ["inventory", "accounting"];
@@ -36,14 +51,16 @@ function MainApp() {
   const navigationItems = useMemo(() => (
     [
       { id: "ah-balancer", label: "Job Optimizer", description: "Interactive 13SxP Balancer" },
-      { id: "cell-grouping", label: "Cell Grouping", description: "YAML rule-based cell grading" },
+      ...(canUseCellGrouping ? [
+        { id: "cell-grouping", label: "Cell Grouping", description: "Grading report processing" }
+      ] : []),
       ...(canViewInventory ? [
         { id: "inventory", label: "Inventory", description: "Stock & Item Directory" },
         { id: "accounting", label: "Accounting", description: "Sales, Purchases & Financials" }
       ] : []),
       ...(isAdmin ? [{ id: "admin", label: "Admin Studio", description: "Roles & Access Governance" }] : [])
     ]
-  ), [canViewInventory, isAdmin]);
+  ), [canViewInventory, isAdmin, canUseCellGrouping]);
 
   const filteredCommands = useMemo(() => {
     if (!commandQuery.trim()) return navigationItems;
@@ -163,7 +180,14 @@ function MainApp() {
             className="mx-auto w-full max-w-7xl px-6 py-10"
           >
             {currentView === "ah-balancer" && <App />}
-            {currentView === "cell-grouping" && <CellGrouping />}
+            {currentView === "cell-grouping" && canUseCellGrouping && (
+              <CellGrouping
+                canManageRules={canManageRules}
+                canProcessReports={canProcessReports}
+                loadRules={cellGrouping.getPublishedRules}
+                publishRules={cellGrouping.publishRules}
+              />
+            )}
             {currentView === "inventory" && <InventoryManagement />}
             {currentView === "accounting" && <AccountingDashboard />}
             {currentView === "admin" && isAdmin ? (

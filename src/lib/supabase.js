@@ -2061,3 +2061,59 @@ export const accounting = {
     return data || []
   }
 }
+
+// Cell grouping: role checks and published LFP/NMC rules (database/19_add_cell_grouping.sql)
+export const cellGrouping = {
+  /** Whether the signed-in user may publish rules and/or process grading reports (checks all their roles). */
+  async getAccess() {
+    const check = async (permission) => {
+      const { data, error } = await supabase.rpc('current_user_has_any_permission', {
+        check_permission: permission,
+        check_resource: 'cell_grouping'
+      })
+      if (error) {
+        console.error(`Error checking ${permission}:`, error)
+        return false
+      }
+      return Boolean(data)
+    }
+    const [canManageRules, canProcessReports] = await Promise.all([
+      check('manage_grouping_rules'),
+      check('process_grading_reports')
+    ])
+    return { canManageRules, canProcessReports }
+  },
+
+  /** Newest published rules per chemistry: { [chemistry]: { id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at } } */
+  async getPublishedRules() {
+    const { data, error } = await supabase
+      .from('cell_grouping_rules')
+      .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
+      .order('uploaded_at', { ascending: false })
+    if (error) throw error
+    const latest = {}
+    for (const row of data || []) {
+      if (!latest[row.chemistry]) latest[row.chemistry] = row
+    }
+    return latest
+  },
+
+  /** Publishes a new version of the rules for one chemistry (admin only; enforced by RLS). */
+  async publishRules(chemistry, fileName, yamlText) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('Not signed in')
+    const { data, error } = await supabase
+      .from('cell_grouping_rules')
+      .insert({
+        chemistry,
+        file_name: fileName,
+        yaml_text: yamlText,
+        uploaded_by: user.id,
+        uploaded_by_email: user.email ?? null
+      })
+      .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
+      .single()
+    if (error) throw error
+    return data
+  }
+}

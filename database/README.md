@@ -18,6 +18,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`12_create_user_directory.sql`** - Admin-only function to list Supabase auth users (id, name, email, last sign-in) for the Admin Panel
 - **`13_add_accounting_permissions.sql`** - Seeds role permissions for accounting modules and recognises the new accountant role in RBAC helpers
 - **`14_add_voltage_to_cell_capacities.sql`** - Adds a voltage column so AH balancer jobs can store per-cell voltage readings
+- **`19_add_cell_grouping.sql`** - Adds the `operator` role, the `manage_grouping_rules` (admin) and `process_grading_reports` (admin, operator) permissions, and the `cell_grouping_rules` table holding published LFP/NMC YAML versions
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
