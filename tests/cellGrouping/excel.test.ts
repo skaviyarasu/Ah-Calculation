@@ -45,11 +45,36 @@ steps:
     const rules = parseRules(text).rules!;
     const result = applySteps(frame, rules, { groupCol: 'GroupID' });
     const wb = XLSX.read(exportResults(result), { type: 'array' });
-    expect(wb.SheetNames).toEqual(['All Cells', 'Low_IR_ good', 'Rest', 'Rejected', 'Summary']);
+    expect(wb.SheetNames).toEqual(['All Cells', 'Cell List', 'Low_IR_ good', 'Rest', 'Rejected', 'Summary']);
     // No sheet may contain the YAML text.
     for (const name of wb.SheetNames) expect(XLSX.utils.sheet_to_csv(wb.Sheets[name])).not.toContain('steps:');
     expect(XLSX.utils.sheet_to_json(wb.Sheets.Rejected)).toEqual([{ IR: 90, GroupID: 'Reject' }]);
     expect(XLSX.utils.sheet_to_json(wb.Sheets['All Cells'])).toHaveLength(3);
+  });
+
+  it('adds a Cell List sheet with Number, the group column and 3Capacity(mAh), in that order, for every output cell', () => {
+    const frame = readWorkbook(
+      xlsxBytes({
+        S: [
+          ['Number', 'cell No.', '3Capacity(mAh)', 'IR'],
+          [' 01-1-1', '1', 4463, 10],
+          [' 01-1-2', '2', 4471, 90],
+          [' 01-1-3', '3', 4430, 50],
+        ],
+      }),
+    ).sheet();
+    const rules = parseRules(`steps:
+  - { name: AA, filter: { col: IR, op: "<", value: 20 } }
+  - { name: Rest }
+`).rules!;
+    const wb = XLSX.read(exportResults(applySteps(frame, rules, { groupCol: 'Category' })), { type: 'array' });
+    expect(wb.SheetNames[1]).toBe('Cell List');
+    expect(XLSX.utils.sheet_to_json(wb.Sheets['Cell List'], { header: 1 })).toEqual([
+      ['Number', 'Category', '3Capacity(mAh)'],
+      [' 01-1-1', 'AA', 4463],
+      [' 01-1-2', 'Rest', 4471],
+      [' 01-1-3', 'Rest', 4430],
+    ]);
   });
 
   it('safeSheetName truncates and de-duplicates', () => {

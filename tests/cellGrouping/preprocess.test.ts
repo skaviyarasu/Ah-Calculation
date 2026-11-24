@@ -153,3 +153,33 @@ describe('raw-export check', () => {
     expect(() => preprocessExcel(xlsxBytes(RAW), { skipRows: 3, header: HEADER, dropRows: [] })).not.toThrow();
   });
 });
+
+describe('sheet auto-detection', () => {
+  function workbookBytes(sheets: Record<string, unknown[][]>): Uint8Array {
+    const wb = XLSX.utils.book_new();
+    for (const [name, rows] of Object.entries(sheets)) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name);
+    return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  }
+  const PIVOT = [
+    ['Row Labels', 'Count of Category'],
+    ['AA', 302],
+    ['AG', 82],
+    ['BG', 1],
+    ['Grand Total', 385],
+  ];
+  const pre = { skipRows: 3, header: HEADER, dropRows: [] };
+
+  it('skips a summary sheet in front and uses the raw-export sheet', () => {
+    const r = preprocessExcel(workbookBytes({ Summary: PIVOT, Data: RAW }), pre);
+    expect(r.sheetName).toBe('Data');
+    expect(r.frame.length).toBe(2);
+  });
+  it('uses the named sheet only, when one is given', () => {
+    expect(() => preprocessExcel(workbookBytes({ Summary: PIVOT, Data: RAW }), pre, 'Summary')).toThrow(/2 columns, but the new header has 5/);
+  });
+  it('lists every sheet and why it does not fit when none is a raw export', () => {
+    expect(() => preprocessExcel(workbookBytes({ Sheet1: PIVOT, final: [HEADER, ...RAW.slice(4), ...RAW.slice(4)] }), pre)).toThrow(
+      /No sheet in this workbook is a raw grading-machine export \("Sheet1": 2 columns \(expected 5\); "final": row 4 contains readings \(already processed\)\)/,
+    );
+  });
+});

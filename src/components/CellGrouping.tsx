@@ -279,7 +279,7 @@ function ReportProcessor({
     chemistry: string;
     rules: PublishedRules;
     /** Set when an Excel file was preprocessed (converted CSV + what was done). */
-    preprocessed?: { csvText: string; pre: Preprocess; droppedRows: number };
+    preprocessed?: { csvText: string; pre: Preprocess; droppedRows: number; sheetName: string; sheetCount: number };
     /** An Excel file was read as-is because the rules have no `preprocess:` block. */
     excelWithoutPreprocess?: boolean;
   } | null>(null);
@@ -315,7 +315,7 @@ function ReportProcessor({
       setWorkbook(wb);
       setFileBytes(bytes);
       setDataName(file.name);
-      setSheetName(wb.sheetNames[0] ?? '');
+      setSheetName(''); // '' = auto: raw-export sheet when preprocessing, else the first sheet
     } catch (e) {
       setWorkbook(null);
       setFileBytes(null);
@@ -361,7 +361,13 @@ function ReportProcessor({
       setResultInfo({
         chemistry,
         rules: latest,
-        preprocessed: preprocessed && { csvText: preprocessed.csvText, pre: preprocessed.pre, droppedRows: preprocessed.droppedRows },
+        preprocessed: preprocessed && {
+          csvText: preprocessed.csvText,
+          pre: preprocessed.pre,
+          droppedRows: preprocessed.droppedRows,
+          sheetName: preprocessed.sheetName,
+          sheetCount: workbook.sheetNames.length,
+        },
         excelWithoutPreprocess: !isCsv && !pre,
       });
       setActiveGroup(0);
@@ -503,6 +509,7 @@ function ReportProcessor({
                     }}
                     className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-1"
                   >
+                    <option value="">Auto-detect</option>
                     {workbook.sheetNames.map((s) => (
                       <option key={s}>{s}</option>
                     ))}
@@ -573,7 +580,8 @@ function ReportProcessor({
           {resultInfo.preprocessed && (
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span>
-                Converted to CSV: first {resultInfo.preprocessed.pre.skipRows} row(s) removed
+                {resultInfo.preprocessed.sheetCount > 1 && `Sheet "${resultInfo.preprocessed.sheetName}" used. `}Converted to CSV: first{' '}
+                {resultInfo.preprocessed.pre.skipRows} row(s) removed
                 {resultInfo.preprocessed.pre.header ? `, header replaced (${resultInfo.preprocessed.pre.header.length} columns)` : ''}
                 {resultInfo.preprocessed.pre.dropRows.length > 0 &&
                   `, ${resultInfo.preprocessed.droppedRows} cell(s) removed by the rules' drop_rows filter`}

@@ -91,8 +91,33 @@ function rowsSheet(frame: Frame, rows: number[]): XLSX.WorkSheet {
 
 export const labelText = (label: Cell): string => (label === null ? '(no group)' : String(label));
 
-/** Builds the export workbook: All Cells, one sheet per group, Rejected, Summary. The rules (YAML) are never included. */
-export function buildResultWorkbook(result: GroupingResult): XLSX.WorkBook {
+/** Placeholder for the group column (e.g. "Category") in a CellListSheet's column list. */
+export const GROUP_COLUMN = '{group}';
+
+/** Extra export sheet with a few columns per cell, in the listed order. */
+export interface CellListSheet {
+  name: string;
+  /** Column names; GROUP_COLUMN stands for the group column (added at the end if not listed). */
+  columns: string[];
+}
+
+export const DEFAULT_CELL_LIST: CellListSheet = { name: 'Cell List', columns: ['Number', GROUP_COLUMN, '3Capacity(mAh)'] };
+
+/** The chosen columns in order (blank where the file lacks one), for the given rows. */
+function cellListSheet(result: GroupingResult, rows: number[], spec: CellListSheet): XLSX.WorkSheet {
+  const { frame } = result;
+  const named = spec.columns.map((c) => (c === GROUP_COLUMN ? result.groupCol : c));
+  const columns = named.includes(result.groupCol) ? [...new Set(named)] : [...new Set(named), result.groupCol];
+  const aoa: Array<Array<string | number | boolean>> = [columns];
+  for (const r of rows) aoa.push(columns.map((c) => (frame.data[c] ? toSheetValue(frame.data[c][r]) : '')));
+  return XLSX.utils.aoa_to_sheet(aoa);
+}
+
+/**
+ * Builds the export workbook: All Cells, Cell List (Number, group column, 3Capacity(mAh)), one sheet
+ * per group, Rejected, Summary. The rules (YAML) are never included.
+ */
+export function buildResultWorkbook(result: GroupingResult, cellList: CellListSheet = DEFAULT_CELL_LIST): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
   const used = new Set<string>();
   const add = (ws: XLSX.WorkSheet, name: string) => XLSX.utils.book_append_sheet(wb, ws, safeSheetName(name, used));
@@ -100,6 +125,7 @@ export function buildResultWorkbook(result: GroupingResult): XLSX.WorkBook {
   const groups = summarizeGroups(result);
 
   add(rowsSheet(frame, result.outputRows), 'All Cells');
+  add(cellListSheet(result, result.outputRows, cellList), cellList.name);
   for (const g of groups.filter((x) => !x.rejected)) add(rowsSheet(frame, g.rows), labelText(g.label));
   add(rowsSheet(frame, result.rejectedRows), 'Rejected');
 
@@ -119,7 +145,7 @@ export function buildResultWorkbook(result: GroupingResult): XLSX.WorkBook {
 }
 
 /** Serialises the export workbook to .xlsx bytes. */
-export function exportResults(result: GroupingResult): Uint8Array {
-  const out = XLSX.write(buildResultWorkbook(result), { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function exportResults(result: GroupingResult, cellList: CellListSheet = DEFAULT_CELL_LIST): Uint8Array {
+  const out = XLSX.write(buildResultWorkbook(result, cellList), { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
   return new Uint8Array(out);
 }

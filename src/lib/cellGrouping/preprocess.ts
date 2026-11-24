@@ -14,7 +14,14 @@ import { evalCondition } from './conditions.ts';
 import { readCsv } from './csv.ts';
 import type { Frame, Preprocess } from './types.ts';
 
-export class PreprocessError extends Error {}
+export class PreprocessError extends Error {
+  /** Short reason, used when listing why each sheet of a workbook did not fit. */
+  readonly short: string;
+  constructor(message: string, short?: string) {
+    super(message);
+    this.short = short ?? message;
+  }
+}
 
 /** Cell text as Excel shows it (and writes it to CSV). */
 function displayText(cell: XLSX.CellObject | undefined): string {
@@ -65,6 +72,7 @@ function assertHeaderRow(row: string[], skipRows: number): void {
     throw new PreprocessError(
       `Row ${skipRows + 1} should be the grading machine's header, but it contains readings (e.g. "${numbers[0].trim()}"). ` +
         'This file looks already processed. Upload the raw grading-machine export.',
+      `row ${skipRows + 1} contains readings (already processed)`,
     );
   }
 }
@@ -76,7 +84,10 @@ function assertHeaderRow(row: string[], skipRows: number): void {
 export function preprocessGrid(grid: string[][], pre: Preprocess): string[][] {
   const rest = grid.slice(pre.skipRows);
   if (rest.length === 0) {
-    throw new PreprocessError(`The file has only ${grid.length} row(s); nothing is left after removing the first ${pre.skipRows}.`);
+    throw new PreprocessError(
+      `The file has only ${grid.length} row(s); nothing is left after removing the first ${pre.skipRows}.`,
+      grid.length === 0 ? 'empty' : `only ${grid.length} row(s)`,
+    );
   }
   const data = rest.slice(1);
   const width = pre.header ? pre.header.length : usedWidth(rest);
@@ -86,6 +97,7 @@ export function preprocessGrid(grid: string[][], pre: Preprocess): string[][] {
       throw new PreprocessError(
         `After removing ${pre.skipRows} row(s) the file has ${fileWidth} columns, but the new header has ${pre.header.length} names. ` +
           'Check that this is the raw grading-machine export (not a summary or processed file) and the right chemistry.',
+        `${fileWidth} columns (expected ${pre.header.length})`,
       );
     }
   }
@@ -113,6 +125,8 @@ export interface PreprocessedFile {
   frame: Frame;
   /** Number of data rows removed by `drop_rows`. */
   droppedRows: number;
+  /** The sheet that was used. */
+  sheetName: string;
 }
 
 /**
@@ -133,13 +147,34 @@ export function dropMatchingRows(grid: string[][], pre: Preprocess): { grid: str
   return { grid: [grid[0], ...kept], dropped: grid.length - 1 - kept.length };
 }
 
-/** Excel bytes (.xlsx or .xls) → preprocessed CSV text and frame. Uses the first sheet unless one is named. */
+/**
+ * Excel bytes (.xlsx or .xls) → preprocessed CSV text and frame.
+ * With `sheetName`, that sheet is used. Otherwise the sheets are tried in order and the first one
+ * laid out like a raw export (column count matches the header, header row has no readings) is
+ * used, so summary or pivot sheets in front of the data are skipped.
+ */
 export function preprocessExcel(data: ArrayBuffer | Uint8Array, pre: Preprocess, sheetName?: string): PreprocessedFile {
   const wb = XLSX.read(data, { type: 'array', cellText: true, cellDates: false, cellFormula: false, cellHTML: false });
-  const name = sheetName ?? wb.SheetNames[0];
-  const ws = wb.Sheets[name];
-  if (!ws) throw new PreprocessError(`Sheet '${name}' not found.`);
-  const { grid, dropped } = dropMatchingRows(preprocessGrid(sheetTextGrid(ws), pre), pre);
-  const csvText = gridToCsvText(grid);
-  return { csvText, frame: readCsv(csvText), droppedRows: dropped };
+  const candidates = sheetName !== undefined ? [sheetName] : wb.SheetNames;
+  const problems: Array<{ name: string; error: PreprocessError }> = [];
+  for (const name of candidates) {
+    const ws = wb.Sheets[name];
+    if (!ws) throw new PreprocessError(`Sheet '${name}' not found.`);
+    let shaped: string[][];
+    try {
+      shaped = preprocessGrid(sheetTextGrid(ws), pre);
+    } catch (e) {
+      if (!(e instanceof PreprocessError)) throw e;
+      problems.push({ name, error: e });
+      continue;
+    }
+    const { grid, dropped } = dropMatchingRows(shaped, pre);
+    const csvText = gridToCsvText(grid);
+    return { csvText, frame: readCsv(csvText), droppedRows: dropped, sheetName: name };
+  }
+  if (problems.length === 1) throw problems[0].error;
+  throw new PreprocessError(
+    `No sheet in this workbook is a raw grading-machine export (${problems.map((p) => `"${p.name}": ${p.error.short}`).join('; ')}). ` +
+      'Upload the raw grading-machine export.',
+  );
 }
