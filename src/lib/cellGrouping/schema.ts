@@ -44,6 +44,8 @@ export const ruleFileSchema = z
   .object({
     global: z.object({ default_action: z.string().optional() }).passthrough().nullish(),
     steps: z.array(stepSchema).min(1, "Rules file must define a non-empty 'steps' list."),
+    // Checked in detail by normalizeRules.
+    preprocess: z.unknown().optional(),
   })
   .passthrough();
 

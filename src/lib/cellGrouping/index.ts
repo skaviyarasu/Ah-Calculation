@@ -10,6 +10,8 @@ export { frameFromGrid } from './frame.ts';
 export { readCsv, resultToCsv, frameToCsv, parseCsvRows } from './csv.ts';
 export type { CsvReadOptions, CsvWriteOptions } from './csv.ts';
 export { RuleEvaluationError, SUPPORTED_OPS } from './conditions.ts';
+export { preprocessExcel, preprocessGrid, dropMatchingRows, gridToCsvText, PreprocessError } from './preprocess.ts';
+export type { PreprocessedFile } from './preprocess.ts';
 export { CHEMISTRIES, missingRuleColumns } from './chemistry.ts';
 export type { Chemistry, PublishedRules } from './chemistry.ts';
 export { PyFloat } from './types.ts';

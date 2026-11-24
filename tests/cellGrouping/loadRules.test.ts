@@ -55,9 +55,9 @@ describe('parseRules', () => {
   });
 
   it('warns about unknown keys instead of failing', () => {
-    const r = parseRules('preprocess: {}\nsteps:\n  - name: s\n    filter: { col: X, op: "==", vale: 1 }');
+    const r = parseRules('postprocess: {}\nsteps:\n  - name: s\n    filter: { col: X, op: "==", vale: 1 }');
     expect(r.rules).toBeDefined();
-    expect(r.warnings.map((w) => w.path)).toEqual(['preprocess', 'steps[0].filter.vale']);
+    expect(r.warnings.map((w) => w.path)).toEqual(['postprocess', 'steps[0].filter.vale']);
   });
 
   it.each([

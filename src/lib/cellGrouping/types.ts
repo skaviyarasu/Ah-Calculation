@@ -76,10 +76,25 @@ export interface Step {
   once: boolean;
 }
 
+/**
+ * Optional `preprocess:` block for raw grading-machine Excel files (ignored by the Python
+ * script, which runs on the already-converted CSV): the sheet is converted to CSV, the first
+ * `skipRows` rows are removed, and the next row (the machine's header) is replaced by `header`.
+ */
+export interface Preprocess {
+  skipRows: number;
+  /** New column names; `null` keeps the file's own header row. */
+  header: string[] | null;
+  /** Rows matching ANY of these conditions are removed before grouping (e.g. failed cells). */
+  dropRows: Condition[];
+}
+
 export interface RuleSet {
   /** Raw `global.default_action`; only "drop_unmatched" changes behaviour. */
   defaultAction: string;
   steps: Step[];
+  /** Present only when the rules file has a `preprocess:` block. */
+  preprocess?: Preprocess;
 }
 
 export interface ApplyOptions {

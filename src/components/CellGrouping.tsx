@@ -7,12 +7,23 @@ import {
   labelText,
   missingRuleColumns,
   parseRules,
+  preprocessExcel,
+  PyFloat,
   readCsv,
   readWorkbook,
   resultToCsv,
   summarizeGroups,
 } from '../lib/cellGrouping/index.ts';
-import type { Cell, GroupingResult, GroupSummary, NormalizeResult, PublishedRules, Workbook } from '../lib/cellGrouping/index.ts';
+import type {
+  Cell,
+  GroupingResult,
+  GroupSummary,
+  NormalizeResult,
+  Preprocess,
+  PublishedRules,
+  RuleSet,
+  Workbook,
+} from '../lib/cellGrouping/index.ts';
 
 const PREVIEW_ROWS = 200;
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -32,6 +43,27 @@ export interface CellGroupingProps {
 
 const formatCell = (c: Cell): string => (c === null ? '' : typeof c === 'boolean' ? (c ? 'TRUE' : 'FALSE') : String(c));
 const formatDate = (iso: string): string => new Date(iso).toLocaleString();
+
+function describeCondition(c: Preprocess['dropRows'][number]): string {
+  if (c.regex !== undefined) return `${c.col ?? 'row'} matches /${c.regex}/`;
+  if (c.between) return `${c.col} between ${c.between.map(String).join(' and ')}`;
+  const show = (x: unknown) => String(x instanceof PyFloat ? x.value : x);
+  const v = c.values ? `[${c.values.map(show).join(', ')}]` : show(c.value);
+  return `${c.col} ${c.op} ${v}`;
+}
+
+/** One-line description of a rules file's preprocessing. */
+function describePreprocess(pre: Preprocess | undefined): string {
+  if (!pre) return 'no preprocessing (Excel files are read as they are)';
+  const parts = [`remove first ${pre.skipRows} row(s)`];
+  parts.push(pre.header ? `replace header (${pre.header.length} columns)` : 'keep the file header');
+  if (pre.dropRows.length) parts.push(`remove rows where ${pre.dropRows.map(describeCondition).join(' or ')}`);
+  return `Excel preprocessing: ${parts.join(', ')}`;
+}
+
+function summarizeRules(rules: RuleSet): string {
+  return `${rules.steps.length} steps · default_action: ${rules.defaultAction} · ${describePreprocess(rules.preprocess)}`;
+}
 
 function downloadBytes(bytes: Uint8Array | string, filename: string, type = XLSX_MIME): void {
   const blob = new Blob([bytes as BlobPart], { type });
@@ -148,7 +180,7 @@ function RulesCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showText, setShowText] = useState(false);
-  const publishedSteps = useMemo(() => (published ? parseRules(published.yaml_text).rules?.steps.length : undefined), [published]);
+  const publishedRules = useMemo(() => (published ? parseRules(published.yaml_text).rules : undefined), [published]);
 
   const onFile = async (file: File) => {
     setError('');
@@ -179,10 +211,8 @@ function RulesCard({
 
       {published ? (
         <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-          <p className="font-medium">
-            Live: {published.file_name}
-            {publishedSteps !== undefined && ` · ${publishedSteps} steps`}
-          </p>
+          <p className="font-medium">Live: {published.file_name}</p>
+          {publishedRules && <p>{summarizeRules(publishedRules)}</p>}
           <p>
             Published {formatDate(published.uploaded_at)}
             {published.uploaded_by_email && ` by ${published.uploaded_by_email}`}
@@ -206,11 +236,7 @@ function RulesCard({
         <div className="space-y-2">
           <IssueList title="These rules are invalid and cannot be published" issues={draft.parsed.errors} tone="error" />
           <IssueList title="Warnings" issues={draft.parsed.warnings} tone="warn" />
-          {draft.parsed.rules && (
-            <p className="text-xs text-emerald-700">
-              Valid · {draft.parsed.rules.steps.length} steps · default_action: {draft.parsed.rules.defaultAction}
-            </p>
-          )}
+          {draft.parsed.rules && <p className="text-xs text-emerald-700">Valid · {summarizeRules(draft.parsed.rules)}</p>}
           <div className="flex gap-2">
             <button type="button" onClick={publish} disabled={!draft.parsed.rules || busy} className={primaryButton}>
               {busy ? 'Publishing…' : `Publish for ${label}`}
@@ -245,10 +271,16 @@ function ReportProcessor({
   const [chemistry, setChemistry] = useState<string>('');
   const [workbook, setWorkbook] = useState<Workbook | null>(null);
   const [dataName, setDataName] = useState('');
+  const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null);
   const [sheetName, setSheetName] = useState('');
   const [groupCol, setGroupCol] = useState(DEFAULT_GROUP_COL);
   const [result, setResult] = useState<GroupingResult | null>(null);
-  const [resultInfo, setResultInfo] = useState<{ chemistry: string; rules: PublishedRules } | null>(null);
+  const [resultInfo, setResultInfo] = useState<{
+    chemistry: string;
+    rules: PublishedRules;
+    /** Set when an Excel file was preprocessed (converted CSV + what was done). */
+    preprocessed?: { csvText: string; pre: Preprocess; droppedRows: number };
+  } | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [activeGroup, setActiveGroup] = useState(0);
@@ -279,10 +311,12 @@ function ReportProcessor({
           })()
         : readWorkbook(bytes);
       setWorkbook(wb);
+      setFileBytes(bytes);
       setDataName(file.name);
       setSheetName(wb.sheetNames[0] ?? '');
     } catch (e) {
       setWorkbook(null);
+      setFileBytes(null);
       setDataName('');
       setError(`Could not read ${file.name}: ${(e as Error).message}`);
     }
@@ -311,10 +345,19 @@ function ReportProcessor({
       if (!latest) throw new Error(`No ${chemistry} rules are published any more. Ask an administrator to publish them.`);
       const latestParsed = parseRules(latest.yaml_text);
       if (!latestParsed.rules) throw new Error(`The published ${chemistry} rules are invalid. Ask an administrator to publish a corrected file.`);
-      const frame = workbook.sheet(sheetName || undefined);
+      // Excel files are preprocessed when the chemistry's rules say so (convert to CSV, remove rows,
+      // replace the header); CSV files are taken as already preprocessed, like the Python script.
+      const pre = latestParsed.rules.preprocess;
+      const isCsv = /\.csv$/i.test(dataName);
+      const preprocessed = !isCsv && pre && fileBytes ? { ...preprocessExcel(fileBytes, pre, sheetName || undefined), pre } : undefined;
+      const frame = preprocessed ? preprocessed.frame : workbook.sheet(sheetName || undefined);
       setMissing(missingRuleColumns(latestParsed.rules, frame));
       setResult(applySteps(frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
-      setResultInfo({ chemistry, rules: latest });
+      setResultInfo({
+        chemistry,
+        rules: latest,
+        preprocessed: preprocessed && { csvText: preprocessed.csvText, pre: preprocessed.pre, droppedRows: preprocessed.droppedRows },
+      });
       setActiveGroup(0);
     } catch (e) {
       setError((e as Error).message);
@@ -334,6 +377,11 @@ function ReportProcessor({
     if (!result || !resultInfo) return;
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
     downloadBytes(exportResults(result), `${stem}_${resultInfo.chemistry}_groups_${stamp}.xlsx`);
+  };
+  /** The converted, preprocessed input (what used to be saved by hand before running the Python script). */
+  const exportPreprocessed = () => {
+    if (!resultInfo?.preprocessed) return;
+    downloadBytes(resultInfo.preprocessed.csvText, `${stem}.csv`, 'text/csv;charset=utf-8');
   };
   /** Same content the Python CLI writes (Windows line endings). */
   const exportCsv = () => {
@@ -507,6 +555,22 @@ function ReportProcessor({
             {dataName} · {resultInfo.chemistry}
             {advanced && ` · rules ${resultInfo.rules.file_name} (published ${formatDate(resultInfo.rules.uploaded_at)})`}
           </p>
+          {resultInfo.preprocessed && (
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span>
+                Converted to CSV: first {resultInfo.preprocessed.pre.skipRows} row(s) removed
+                {resultInfo.preprocessed.pre.header ? `, header replaced (${resultInfo.preprocessed.pre.header.length} columns)` : ''}
+                {resultInfo.preprocessed.pre.dropRows.length > 0 &&
+                  `, ${resultInfo.preprocessed.droppedRows} cell(s) removed by the rules' drop_rows filter`}
+                .
+              </span>
+              {advanced && (
+                <button type="button" onClick={exportPreprocessed} className="text-accent hover:underline">
+                  Download preprocessed CSV
+                </button>
+              )}
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
               ['Cells', result.frame.length],

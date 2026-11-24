@@ -9,7 +9,7 @@
 import { SUPPORTED_OPS } from './conditions.ts';
 import { pyRegex, pyTruthy } from './pyCompat.ts';
 import { PyFloat } from './types.ts';
-import type { Condition, Filter, RuleScalar, RuleSet, Step, StepAction } from './types.ts';
+import type { Condition, Filter, Preprocess, RuleScalar, RuleSet, Step, StepAction } from './types.ts';
 
 export interface RuleIssue {
   path: string;
@@ -22,17 +22,16 @@ export interface NormalizeResult {
   warnings: RuleIssue[];
 }
 
-const KNOWN_TOP = new Set(['global', 'steps']);
+const KNOWN_TOP = new Set(['global', 'steps', 'preprocess']);
+const KNOWN_PREPROCESS = new Set(['skip_rows', 'header', 'drop_rows']);
 const KNOWN_GLOBAL = new Set(['default_action']);
 const KNOWN_STEP = new Set(['name', 'filter', 'then', 'once']);
 const KNOWN_THEN = new Set(['action', 'set']);
 const KNOWN_COND = new Set(['col', 'op', 'value', 'values', 'between', 'regex', 'case_insensitive']);
 const DEFAULT_ACTIONS = new Set(['keep_unmatched', 'drop_unmatched']);
 
-const isObj = (x: unknown): x is Record<string, unknown> =>
-  typeof x === 'object' && x !== null && !Array.isArray(x) && !(x instanceof PyFloat);
-const isScalar = (x: unknown): x is RuleScalar =>
-  x === null || ['string', 'number', 'boolean'].includes(typeof x) || x instanceof PyFloat;
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x) && !(x instanceof PyFloat);
+const isScalar = (x: unknown): x is RuleScalar => x === null || ['string', 'number', 'boolean'].includes(typeof x) || x instanceof PyFloat;
 
 function warnUnknown(obj: Record<string, unknown>, known: Set<string>, path: string, warnings: RuleIssue[]): void {
   for (const k of Object.keys(obj)) {
@@ -83,7 +82,11 @@ function normalizeCondition(raw: unknown, path: string, errors: RuleIssue[], war
   const hasBetween = Array.isArray(betweenRaw);
   if (!hasRegex && !hasBetween) {
     if (!SUPPORTED_OPS.includes(op)) err('op', `Unsupported op '${op}'. Supported: ${SUPPORTED_OPS.join(', ')}`);
-    if ((op === 'in' || op === 'not in' || op === 'nin') && (values === undefined || values === null) && (raw.value === undefined || raw.value === null)) {
+    if (
+      (op === 'in' || op === 'not in' || op === 'nin') &&
+      (values === undefined || values === null) &&
+      (raw.value === undefined || raw.value === null)
+    ) {
       errors.push({ path, message: `'${op}' requires 'values' or a single 'value'.` });
     }
     if ((op === 'contains' || op === '~') && typeof raw.value === 'string') checkRegex(raw.value, ci, `${path}.value`, errors);
@@ -124,10 +127,56 @@ function normalizeFilter(raw: unknown, path: string, errors: RuleIssue[], warnin
     errors.push({ path: listPath, message: 'must be a non-empty list of conditions.' });
     return null;
   }
-  const conditions = list
-    .map((c, i) => normalizeCondition(c, `${listPath}[${i}]`, errors, warnings))
-    .filter((c): c is Condition => c !== undefined);
+  const conditions = list.map((c, i) => normalizeCondition(c, `${listPath}[${i}]`, errors, warnings)).filter((c): c is Condition => c !== undefined);
   return { mode, conditions };
+}
+
+/** `preprocess:` block (TypeScript only; the Python script ignores it). */
+function normalizePreprocess(raw: unknown, errors: RuleIssue[], warnings: RuleIssue[]): Preprocess | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isObj(raw)) {
+    errors.push({ path: 'preprocess', message: 'must be a mapping with skip_rows and header' });
+    return undefined;
+  }
+  warnUnknown(raw, KNOWN_PREPROCESS, 'preprocess', warnings);
+  let skipRows = 0;
+  if (raw.skip_rows !== undefined && raw.skip_rows !== null) {
+    if (typeof raw.skip_rows !== 'number' || !Number.isInteger(raw.skip_rows) || raw.skip_rows < 0) {
+      errors.push({ path: 'preprocess.skip_rows', message: 'must be a whole number of rows (0 or more)' });
+    } else skipRows = raw.skip_rows;
+  }
+  let header: string[] | null = null;
+  if (raw.header !== undefined && raw.header !== null) {
+    if (!Array.isArray(raw.header) || raw.header.length === 0 || !raw.header.every((h) => typeof h === 'string')) {
+      errors.push({ path: 'preprocess.header', message: 'must be a non-empty list of quoted column names' });
+    } else {
+      header = raw.header as string[];
+      header.forEach((h, i) => {
+        if (h.trim() === '') errors.push({ path: `preprocess.header[${i}]`, message: 'column name is empty' });
+      });
+      const seen = new Set<string>();
+      header.forEach((h, i) => {
+        if (seen.has(h))
+          warnings.push({ path: `preprocess.header[${i}]`, message: `'${h}' appears more than once; the repeat is read as '${h}.1'.` });
+        seen.add(h);
+      });
+    }
+  }
+  const dropRows: Condition[] = [];
+  if (raw.drop_rows !== undefined && raw.drop_rows !== null) {
+    if (!Array.isArray(raw.drop_rows) || raw.drop_rows.length === 0) {
+      errors.push({
+        path: 'preprocess.drop_rows',
+        message: 'must be a non-empty list of conditions, e.g. - { col: "5CC_Ratio(%)", op: "==", value: "***" }',
+      });
+    } else {
+      raw.drop_rows.forEach((c, i) => {
+        const cond = normalizeCondition(c, `preprocess.drop_rows[${i}]`, errors, warnings);
+        if (cond) dropRows.push(cond);
+      });
+    }
+  }
+  return { skipRows, header, dropRows };
 }
 
 export function normalizeRules(raw: unknown): NormalizeResult {
@@ -197,6 +246,8 @@ export function normalizeRules(raw: unknown): NormalizeResult {
     steps.push({ name, filter, action, set, once });
   });
 
+  const preprocess = normalizePreprocess(raw.preprocess, errors, warnings);
+
   if (errors.length) return { errors, warnings };
-  return { rules: { defaultAction, steps }, errors, warnings };
+  return { rules: preprocess ? { defaultAction, steps, preprocess } : { defaultAction, steps }, errors, warnings };
 }
