@@ -231,7 +231,16 @@ function RulesCard({
 // ---------------------------------------------------------------------------
 
 /** `advanced` (admins) adds rule details, sheet and group-column options; operators only pick the chemistry and the file. */
-function ReportProcessor({ published, advanced }: { published: PublishedMap; advanced: boolean }) {
+function ReportProcessor({
+  published,
+  advanced,
+  reload,
+}: {
+  published: PublishedMap;
+  advanced: boolean;
+  /** Fetches the latest published rules (and updates `published`). */
+  reload: () => Promise<PublishedMap>;
+}) {
   const available = CHEMISTRIES.filter((c) => published[c.id]);
   const [chemistry, setChemistry] = useState<string>('');
   const [workbook, setWorkbook] = useState<Workbook | null>(null);
@@ -243,6 +252,8 @@ function ReportProcessor({ published, advanced }: { published: PublishedMap; adv
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [activeGroup, setActiveGroup] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [reloading, setReloading] = useState(false);
 
   const rules = chemistry ? published[chemistry] : undefined;
   const parsed = useMemo(() => (rules ? parseRules(rules.yaml_text) : null), [rules]);
@@ -277,26 +288,52 @@ function ReportProcessor({ published, advanced }: { published: PublishedMap; adv
     }
   };
 
-  const run = () => {
+  const reloadRules = async () => {
+    setReloading(true);
+    setError('');
+    try {
+      await reload();
+    } catch (e) {
+      setError(`Could not reload the rules: ${(e as Error).message}`);
+    } finally {
+      setReloading(false);
+    }
+  };
+
+  /** Always processes with the latest published rules, even if they changed after this page was opened. */
+  const run = async () => {
     setError('');
     clearResult();
-    if (!parsed?.rules || !rules || !workbook) return;
+    if (!chemistry || !workbook) return;
+    setBusy(true);
     try {
+      const latest = (await reload())[chemistry];
+      if (!latest) throw new Error(`No ${chemistry} rules are published any more. Ask an administrator to publish them.`);
+      const latestParsed = parseRules(latest.yaml_text);
+      if (!latestParsed.rules) throw new Error(`The published ${chemistry} rules are invalid. Ask an administrator to publish a corrected file.`);
       const frame = workbook.sheet(sheetName || undefined);
-      setMissing(missingRuleColumns(parsed.rules, frame));
-      setResult(applySteps(frame, parsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
-      setResultInfo({ chemistry, rules });
+      setMissing(missingRuleColumns(latestParsed.rules, frame));
+      setResult(applySteps(frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
+      setResultInfo({ chemistry, rules: latest });
       setActiveGroup(0);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   };
+
+  const reloadButton = (
+    <button type="button" onClick={reloadRules} disabled={reloading || busy} className="text-xs text-accent hover:underline disabled:opacity-50">
+      {reloading ? 'Reloading…' : 'Reload rules'}
+    </button>
+  );
 
   const stem = dataName.replace(/\.[^.]+$/, '') || 'cells';
   const exportExcel = () => {
     if (!result || !resultInfo) return;
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-    downloadBytes(exportResults(result, resultInfo.rules.yaml_text), `${stem}_${resultInfo.chemistry}_groups_${stamp}.xlsx`);
+    downloadBytes(exportResults(result), `${stem}_${resultInfo.chemistry}_groups_${stamp}.xlsx`);
   };
   /** Same content the Python CLI writes (Windows line endings). */
   const exportCsv = () => {
@@ -307,15 +344,19 @@ function ReportProcessor({ published, advanced }: { published: PublishedMap; adv
   if (!available.length) {
     return (
       <section className="glass-panel p-5">
-        <h3 className="font-semibold">Process grading report</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Process grading report</h3>
+          {reloadButton}
+        </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          No grouping rules have been published yet. Ask an administrator to publish the LFP / NMC rules.
+          No grouping rules have been published yet. Ask an administrator to publish the LFP / NMC rules, then click Reload rules.
         </p>
+        {error && <IssueList title="Error" issues={[{ path: '', message: error }]} tone="error" />}
       </section>
     );
   }
 
-  const canRun = Boolean(parsed?.rules && workbook);
+  const canRun = Boolean(parsed?.rules && workbook) && !busy;
   const kept = groups.filter((g) => !g.rejected);
   const tabs: Array<{ label: string; rows: number[]; rejected?: boolean }> = result
     ? [
@@ -329,7 +370,10 @@ function ReportProcessor({ published, advanced }: { published: PublishedMap; adv
   return (
     <>
       <section className="glass-panel space-y-4 p-5">
-        <h3 className="font-semibold">Process grading report</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Process grading report</h3>
+          {reloadButton}
+        </div>
 
         <div>
           <p className="mb-2 text-sm">1. Select the cell chemistry</p>
@@ -426,7 +470,7 @@ function ReportProcessor({ published, advanced }: { published: PublishedMap; adv
 
         <div className="flex flex-wrap gap-3">
           <button onClick={run} disabled={!canRun} className={primaryButton}>
-            3. Process {chem?.label ?? ''} data
+            {busy ? 'Processing…' : `3. Process ${chem?.label ?? ''} data`}
           </button>
           <button onClick={exportExcel} disabled={!result} className={secondaryButton}>
             Export Excel
@@ -521,9 +565,29 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
     }
   }, [loadRules]);
 
+  /** Background reload (no loading screen); throws so callers can show the error. */
+  const reload = useCallback(async () => {
+    const latest = await loadRules();
+    setPublished(latest);
+    return latest;
+  }, [loadRules]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Pick up rules published from another browser when the user comes back to this tab.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') reload().catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [reload]);
 
   const onPublish = async (chemistry: string, fileName: string, text: string) => {
     const row = await publishRules(chemistry, fileName, text);
@@ -578,7 +642,7 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
         </section>
       )}
 
-      {!loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} />}
+      {!loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />}
     </div>
   );
 }

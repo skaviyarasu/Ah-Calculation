@@ -91,8 +91,8 @@ function rowsSheet(frame: Frame, rows: number[]): XLSX.WorkSheet {
 
 export const labelText = (label: Cell): string => (label === null ? '(no group)' : String(label));
 
-/** Builds the export workbook: All Cells, one sheet per group, Rejected, Summary, Rules. */
-export function buildResultWorkbook(result: GroupingResult, rulesText?: string): XLSX.WorkBook {
+/** Builds the export workbook: All Cells, one sheet per group, Rejected, Summary. The rules (YAML) are never included. */
+export function buildResultWorkbook(result: GroupingResult): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
   const used = new Set<string>();
   const add = (ws: XLSX.WorkSheet, name: string) => XLSX.utils.book_append_sheet(wb, ws, safeSheetName(name, used));
@@ -115,12 +115,11 @@ export function buildResultWorkbook(result: GroupingResult, rulesText?: string):
     ['default_action', result.rules.defaultAction],
   ];
   add(XLSX.utils.aoa_to_sheet(summary), 'Summary');
-  if (rulesText !== undefined) add(XLSX.utils.aoa_to_sheet(rulesText.split(/\r?\n/).map((l) => [l])), 'Rules');
   return wb;
 }
 
 /** Serialises the export workbook to .xlsx bytes. */
-export function exportResults(result: GroupingResult, rulesText?: string): Uint8Array {
-  const out = XLSX.write(buildResultWorkbook(result, rulesText), { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
+export function exportResults(result: GroupingResult): Uint8Array {
+  const out = XLSX.write(buildResultWorkbook(result), { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
   return new Uint8Array(out);
 }

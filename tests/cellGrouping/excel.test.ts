@@ -34,7 +34,7 @@ describe('readWorkbook', () => {
 });
 
 describe('exportResults', () => {
-  it('writes All Cells, one sheet per group, Rejected, Summary and Rules', () => {
+  it('writes All Cells, one sheet per group, Rejected and Summary, without the rules', () => {
     const frame = readWorkbook(xlsxBytes({ S: [['IR'], [10], [90], [50]] })).sheet();
     const text = `
 steps:
@@ -44,8 +44,10 @@ steps:
 `;
     const rules = parseRules(text).rules!;
     const result = applySteps(frame, rules, { groupCol: 'GroupID' });
-    const wb = XLSX.read(exportResults(result, text), { type: 'array' });
-    expect(wb.SheetNames).toEqual(['All Cells', 'Low_IR_ good', 'Rest', 'Rejected', 'Summary', 'Rules']);
+    const wb = XLSX.read(exportResults(result), { type: 'array' });
+    expect(wb.SheetNames).toEqual(['All Cells', 'Low_IR_ good', 'Rest', 'Rejected', 'Summary']);
+    // No sheet may contain the YAML text.
+    for (const name of wb.SheetNames) expect(XLSX.utils.sheet_to_csv(wb.Sheets[name])).not.toContain('steps:');
     expect(XLSX.utils.sheet_to_json(wb.Sheets.Rejected)).toEqual([{ IR: 90, GroupID: 'Reject' }]);
     expect(XLSX.utils.sheet_to_json(wb.Sheets['All Cells'])).toHaveLength(3);
   });
