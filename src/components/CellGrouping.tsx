@@ -351,6 +351,9 @@ function ReportProcessor({
       // replace the header); CSV files are taken as already preprocessed, like the Python script.
       const pre = latestParsed.rules.preprocess;
       const isCsv = /\.csv$/i.test(dataName);
+      if (isCsv && pre) {
+        throw new Error(`The ${chemistry} rules expect the raw grading-machine export (Excel .xlsx / .xls), not a CSV. Upload the raw machine file.`);
+      }
       const preprocessed = !isCsv && pre && fileBytes ? { ...preprocessExcel(fileBytes, pre, sheetName || undefined), pre } : undefined;
       const frame = preprocessed ? preprocessed.frame : workbook.sheet(sheetName || undefined);
       setMissing(missingRuleColumns(latestParsed.rules, frame));
@@ -470,9 +473,9 @@ function ReportProcessor({
         </div>
 
         <div className="space-y-3">
-          <p className="text-sm">2. Upload the input file</p>
+          <p className="text-sm">2. Upload the raw grading-machine export</p>
           <FilePicker
-            accept=".csv,.xlsx,.xls"
+            accept={advanced ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
             onFile={onDataFile}
             label={
               dataName ? (
@@ -480,8 +483,10 @@ function ReportProcessor({
                   <span className="font-medium text-foreground">{dataName}</span>
                   <span className="mt-1 text-xs">click to replace</span>
                 </>
+              ) : advanced ? (
+                'Choose the raw grading-machine export (.xlsx / .xls; .csv for testing)'
               ) : (
-                'Choose the grading-machine report (.csv / .xlsx / .xls)'
+                'Choose the raw grading-machine export (.xlsx / .xls)'
               )
             }
           />
@@ -533,11 +538,11 @@ function ReportProcessor({
         {!canRun && (
           <p className="text-xs text-muted-foreground">
             {!chemistry && !workbook
-              ? 'Select LFP or NMC and upload the input file.'
+              ? 'Select LFP or NMC and upload the raw grading-machine export.'
               : !chemistry
                 ? 'Select LFP or NMC.'
                 : !workbook
-                  ? 'Upload the input file.'
+                  ? 'Upload the raw grading-machine export.'
                   : ''}
           </p>
         )}
@@ -680,7 +685,7 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
         <p className="mt-1 text-sm text-muted-foreground">
           {canManageRules
             ? 'Publish the LFP and NMC grouping rules for operators, then process grading reports with them.'
-            : 'Select LFP or NMC, upload the input file and process it. The matching rules are applied automatically.'}
+            : 'Select LFP or NMC, upload the raw grading-machine export and process it. The matching rules and preprocessing are applied automatically.'}
         </p>
       </div>
 

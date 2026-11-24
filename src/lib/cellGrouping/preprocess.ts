@@ -51,6 +51,24 @@ function usedWidth(rows: string[][]): number {
   return w;
 }
 
+const isNumberText = (s: string): boolean => s.trim() !== '' && Number.isFinite(Number(s.trim()));
+
+/**
+ * The row that gets replaced must be the machine's header (column names), not readings.
+ * Otherwise the file is not a raw export (e.g. it was already cleaned up, header in row 1),
+ * and replacing that row would silently delete cells.
+ */
+function assertHeaderRow(row: string[], skipRows: number): void {
+  const filled = row.filter((c) => c.trim() !== '');
+  const numbers = filled.filter(isNumberText);
+  if (filled.length && numbers.length / filled.length > 0.25) {
+    throw new PreprocessError(
+      `Row ${skipRows + 1} should be the grading machine's header, but it contains readings (e.g. "${numbers[0].trim()}"). ` +
+        'This file looks already processed. Upload the raw grading-machine export.',
+    );
+  }
+}
+
 /**
  * Removes the first `skipRows` rows, then replaces the following (header) row with `header`.
  * Every row is padded to the same width, as Excel does when saving CSV.
@@ -67,10 +85,11 @@ export function preprocessGrid(grid: string[][], pre: Preprocess): string[][] {
     if (fileWidth !== pre.header.length) {
       throw new PreprocessError(
         `After removing ${pre.skipRows} row(s) the file has ${fileWidth} columns, but the new header has ${pre.header.length} names. ` +
-          'Check that this is the right chemistry and the rules match this grading machine.',
+          'Check that this is the raw grading-machine export (not a summary or processed file) and the right chemistry.',
       );
     }
   }
+  assertHeaderRow(rest[0], pre.skipRows);
   const fit = (r: string[]) => Array.from({ length: width }, (_, i) => r[i] ?? '');
   // A row that would be an empty CSV line is skipped by the CSV reader anyway; drop it here so
   // grid rows and frame rows stay aligned for drop_rows.

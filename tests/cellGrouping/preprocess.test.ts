@@ -46,7 +46,12 @@ describe('preprocessGrid', () => {
 
 describe('gridToCsvText', () => {
   it('quotes like Excel/pandas and keeps leading spaces', () => {
-    expect(gridToCsvText([['a', 'b,c'], [' x', 'say "hi"']])).toBe('a,"b,c"\r\n x,"say ""hi"""\r\n');
+    expect(
+      gridToCsvText([
+        ['a', 'b,c'],
+        [' x', 'say "hi"'],
+      ]),
+    ).toBe('a,"b,c"\r\n x,"say ""hi"""\r\n');
   });
 });
 
@@ -109,9 +114,8 @@ describe('drop_rows', () => {
     expect(frame).toEqual(readCsv(csvText));
   });
   it('removes a row when any of several conditions matches', () => {
-    const pre = parsed(
-      '  drop_rows:\n    - { col: "5Time(minute)", op: "==", value: "***" }\n    - { col: "3SD (%)  ", op: "==", value: "***" }\n',
-    ).rules!.preprocess!;
+    const pre = parsed('  drop_rows:\n    - { col: "5Time(minute)", op: "==", value: "***" }\n    - { col: "3SD (%)  ", op: "==", value: "***" }\n')
+      .rules!.preprocess!;
     const { frame, droppedRows } = preprocessExcel(xlsxBytes(FAILED), pre);
     expect(droppedRows).toBe(2);
     expect(frame.data.Number).toEqual([' 01-1-3']);
@@ -128,5 +132,24 @@ describe('drop_rows', () => {
     const r = parsed(body);
     expect(r.rules).toBeUndefined();
     expect(r.errors.map((e) => e.path)).toContain(path);
+  });
+});
+
+describe('raw-export check', () => {
+  it('refuses a file that is already processed (header in row 1, readings in the row to replace)', () => {
+    const processed: unknown[][] = [
+      HEADER,
+      [' 01-1-1', '1', '***', 91.4, '---'],
+      [' 01-1-2', '2', 1.2, 102, '---'],
+      [' 01-1-3', '3', 1.1, 99.5, '---'],
+      [' 01-1-4', '4', 1.3, 101, '---'],
+      [' 01-1-5', '5', 1.0, 98, '---'],
+    ];
+    expect(() => preprocessExcel(xlsxBytes(processed), { skipRows: 3, header: HEADER, dropRows: [] })).toThrow(
+      /Row 4 should be the grading machine's header, but it contains readings .*Upload the raw grading-machine export/,
+    );
+  });
+  it('accepts the raw export, whose row 4 is the machine header', () => {
+    expect(() => preprocessExcel(xlsxBytes(RAW), { skipRows: 3, header: HEADER, dropRows: [] })).not.toThrow();
   });
 });
