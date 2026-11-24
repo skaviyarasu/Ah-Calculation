@@ -280,6 +280,8 @@ function ReportProcessor({
     rules: PublishedRules;
     /** Set when an Excel file was preprocessed (converted CSV + what was done). */
     preprocessed?: { csvText: string; pre: Preprocess; droppedRows: number };
+    /** An Excel file was read as-is because the rules have no `preprocess:` block. */
+    excelWithoutPreprocess?: boolean;
   } | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -357,6 +359,7 @@ function ReportProcessor({
         chemistry,
         rules: latest,
         preprocessed: preprocessed && { csvText: preprocessed.csvText, pre: preprocessed.pre, droppedRows: preprocessed.droppedRows },
+        excelWithoutPreprocess: !isCsv && !pre,
       });
       setActiveGroup(0);
     } catch (e) {
@@ -543,7 +546,14 @@ function ReportProcessor({
 
       {result && missing.length > 0 && (
         <IssueList
-          title={`The report is missing ${missing.length} column(s) that the ${resultInfo?.chemistry} rules use, so those conditions never match. Is this the right chemistry?`}
+          title={
+            resultInfo?.excelWithoutPreprocess
+              ? `The ${resultInfo.chemistry} rules have no preprocess block, so this Excel file was read as it is (its first row became the header) and ${missing.length} column(s) the rules use were not found. ` +
+                (advanced
+                  ? `Add the preprocess block (skip_rows, header, drop_rows) to the ${resultInfo.chemistry} rules and publish them again.`
+                  : 'Ask an administrator to add the preprocessing settings to these rules.')
+              : `The report is missing ${missing.length} column(s) that the ${resultInfo?.chemistry} rules use, so those conditions never match. Is this the right chemistry?`
+          }
           issues={missing.map((m) => ({ path: '', message: m }))}
           tone="warn"
         />
