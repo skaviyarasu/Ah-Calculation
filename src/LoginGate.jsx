@@ -4,14 +4,11 @@ import { auth, supabase, inventory } from './lib/supabase';
 export default function LoginGate({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(true); // Start with loading true
   
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Initialize Supabase authentication
@@ -94,52 +91,6 @@ useEffect(() => {
     setSubmitting(false);
   }
 
-  async function handleRegister(e) {
-e.preventDefault();
-    if (!email.trim() || !password || !confirmPassword || !fullName.trim()) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      alert('Passwords do not match');
-      return;
-    }
-
-    if (password.length < 6) {
-      alert('Password must be at least 6 characters long');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await auth.signUp(email, password, {
-        full_name: fullName.trim()
-      });
-      
-      alert('Registration successful! Please check your email for verification link.');
-      setIsLogin(true);
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
-      setFullName('');
-    } catch (error) {
-      console.error('Registration error:', error);
-      alert(error.message || 'Registration failed. Please try again.');
-    }
-    setSubmitting(false);
-  }
-
-  async function handleLogout() {
-    try {
-      await auth.signOut();
-      // Success handled by auth state change listener
-    } catch (error) {
-      console.error('Logout error:', error);
-      alert('Logout failed. Please try again.');
-    }
-  }
-
   // Show loading spinner while checking authentication
   if (loading) {
     return (
@@ -172,9 +123,7 @@ e.preventDefault();
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               AH Balancer
             </h1>
-            <p className="text-gray-600 text-sm">
-              {isLogin ? 'Sign in to access your battery optimization tools' : 'Create an account to get started'}
-            </p>
+            <p className="text-gray-600 text-sm">Sign in to access your battery optimization tools</p>
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -183,47 +132,7 @@ e.preventDefault();
             </div>
           </div>
 
-          <div className="flex bg-gray-100 rounded-xl p-1">
-            <button
-              onClick={() => setIsLogin(true)}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                isLogin 
-                  ? 'bg-white text-gray-900 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => setIsLogin(false)}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                !isLogin 
-                  ? 'bg-white text-gray-900 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Register
-            </button>
-          </div>
-
-          <form onSubmit={isLogin ? handleLogin : handleRegister} className="space-y-4">
-            {!isLogin && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your full name"
-                  required
-                  autoFocus={!isLogin}
-                />
-              </div>
-            )}
-
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email
@@ -235,7 +144,7 @@ e.preventDefault();
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your email"
                 required
-                autoFocus={isLogin}
+                autoFocus
               />
             </div>
 
@@ -253,22 +162,6 @@ e.preventDefault();
               />
             </div>
 
-            {!isLogin && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirm Password
-                </label>
-<input
-type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Confirm your password"
-                  required
-                />
-              </div>
-            )}
-
             <button
               type="submit"
               disabled={submitting}
@@ -278,44 +171,18 @@ type="password"
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
-              {submitting ? 'Processing...' : isLogin ? 'Sign In' : 'Create Account'}
+              {submitting ? 'Signing in...' : 'Sign In'}
             </button>
 </form>
 
-          {!isLogin && (
-            <div className="text-center">
-              <p className="text-xs text-gray-500">
-                Password must be at least 6 characters long
-              </p>
-            </div>
-          )}
+          <p className="text-center text-xs text-gray-500">
+            Accounts are created by an administrator. Contact your administrator if you need access.
+          </p>
         </div>
 </div>
 );
 }
 
-  // Render authenticated app with user info
-return (
-    <div className="min-h-screen bg-gray-50">
-      {/* User Info Header - Integrated with app */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-600">
-                Welcome, <strong className="text-gray-900">{currentUser?.user_metadata?.full_name || currentUser?.email}</strong>
-              </span>
-            </div>
-            <button 
-              onClick={handleLogout} 
-              className="text-sm border border-red-300 hover:border-red-400 rounded-lg px-4 py-2 bg-white hover:bg-red-50 text-red-600 transition-colors font-medium"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-</div>
-{children}
-</div>
-);
+  // Authenticated: the app shell (Genie sidebar) shows the user and Sign out.
+  return <>{children}</>;
 }

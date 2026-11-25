@@ -1,0 +1,4 @@
+# Python raises (between on a text column); the TS engine must raise too.
+steps:
+  - name: "Bad"
+    filter: { col: "Cell_ID", between: [1, 2] }

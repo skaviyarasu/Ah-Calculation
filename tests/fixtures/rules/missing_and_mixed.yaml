@@ -1,0 +1,15 @@
+global:
+  default_action: keep_unmatched
+preprocess:                     # not used by the Python reference: ignored with a warning
+  columns: { drop: [Batch] }
+steps:
+  - name: "Missing-Col"
+    filter: { col: "Does_Not_Exist", op: "!=", value: 1 }
+  - name: "All-Wins-Over-Any"
+    filter:
+      all: [ { col: "IR_Value", op: "<", value: 30 } ]
+      any: [ { col: "IR_Value", op: ">", value: 0 } ]
+  - name: 42                    # numeric step name becomes the label
+    filter: { col: "IR_Value", op: "<", value: 60 }
+  - name: "Everything-Else"
+    then: { action: keep }

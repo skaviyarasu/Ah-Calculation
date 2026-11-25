@@ -1,0 +1,22 @@
+# Every comparison operator, numeric-string values and the string fallback.
+global:
+  default_action: keep_unmatched
+steps:
+  - name: "Premium"
+    filter:
+      all:
+        - { col: "CC_Ratio", op: ">", value: "0.95" }      # numeric string -> float
+        - { col: "IR_Value", op: "<", value: 25 }
+  - name: "Exact-IR-50"
+    filter: { col: "IR_Value", op: "==", value: 50 }      # bare condition
+  - name: "Lexical-IR"
+    filter: { col: "IR_Value", op: ">=", value: "abc" }   # numeric column vs text: string fallback
+  - name: "Not-Pass"
+    filter:
+      all:
+        - { col: "Status", op: "!=", value: "PASS" }
+        - { col: "CC_Ratio", op: "<=", value: 0.85 }
+  - name: "Status-Eq"
+    filter: { col: "Status", op: "==", value: "OK" }
+  - name: "Gte-Float"
+    filter: { col: "Capacity_Retention", op: ">=", value: 0.97 }

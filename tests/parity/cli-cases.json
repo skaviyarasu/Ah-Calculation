@@ -1,0 +1,9 @@
+{
+  "_comment": "Real CLI invocations replayed by tests/parity/cli.test.ts. The --output path is never written: the test redirects it to a temp folder. Cases whose input/rules files are missing on this machine are skipped.",
+  "cases": [
+    {
+      "name": "Production run: 24.09.2025Test.csv with GroupingRules.yaml",
+      "command": "python categorize_csv.py --input \"C:\\Users\\Public\\Documents\\Cell Grouping\\24.09.2025Test.csv\" --rules \"C:\\Users\\Public\\Documents\\Cell Grouping\\GroupingRules.yaml\" --output \"C:\\Users\\Public\\Documents\\Cell Grouping\\final.csv\""
+    }
+  ]
+}

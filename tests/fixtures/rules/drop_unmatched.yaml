@@ -1,0 +1,14 @@
+global:
+  default_action: drop_unmatched
+steps:
+  - name: "Keep-Good"
+    filter:
+      all:
+        - { col: "CC_Ratio", op: ">=", value: 0.88 }
+        - { col: "IR_Value", op: "<=", value: 50 }
+    then: { action: keep, set: { Grade: "Good" } }
+  - name: "Reject-Fail"
+    filter: { col: "Status", op: "==", value: "FAIL" }
+    then: { action: drop }
+  - name: "Keep-OK"
+    filter: { col: "Status", op: "==", value: "OK" }

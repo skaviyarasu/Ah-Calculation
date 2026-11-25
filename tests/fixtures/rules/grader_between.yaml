@@ -1,0 +1,26 @@
+# Same shape as the production GroupingRules.yaml (between-based, catch-all last).
+global:
+  default_action: keep_unmatched
+steps:
+  - name: "AA"
+    filter:
+      all:
+        - { col: "5CC_Ratio(%)", between: [90, 100] }
+        - { col: "5Time(minute)", between: [120.0, 130.0] }
+        - { col: "3End Voltage(mV)", between: [2950, 3001] }
+    then: { action: keep }
+  - name: "AB"
+    filter:
+      all:
+        - { col: "5CC_Ratio(%)", between: [90, 100] }
+        - { col: "5Time(minute)", between: [120.0, 130.0] }
+        - { col: "3End Voltage(mV)", between: [2900, 2949] }
+    then: { action: keep }
+  - name: "BA"
+    filter:
+      all:
+        - { col: "5CC_Ratio(%)", between: [80, 89.99] }
+        - { col: "5Time(minute)", between: [100.0, 150.0] }
+    then: { action: keep }
+  - name: "Unassigned"
+    then: { action: keep }

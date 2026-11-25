@@ -4,25 +4,59 @@ import App from "./App";
 import AdminPanel from "./components/AdminPanel";
 import InventoryManagement from "./components/InventoryManagement";
 import AccountingDashboard from "./components/AccountingDashboard";
+import CellGrouping from "./components/CellGrouping";
+import GenieShell from "./components/GenieShell";
+import GradingHistory from "./components/GradingHistory";
 import { useRole } from "./hooks/useRole";
 import { useBranch } from "./hooks/useBranch";
+import { useCellGroupingAccess } from "./hooks/useCellGroupingAccess";
+import { auth, cellGrouping } from "./lib/supabase";
+import { ROLE_METADATA } from "./constants/rolePermissionMatrix";
+
+// Office-network restriction for Group cells (database/20_cell_grouping_office_network.sql)
+const officeNetwork = {
+  getStatus: cellGrouping.getOfficeStatus,
+  list: cellGrouping.listOfficeIps,
+  add: cellGrouping.addOfficeIp,
+  remove: cellGrouping.removeOfficeIp,
+  // Approved devices (database/22_cell_grouping_devices.sql)
+  devices: {
+    getStatus: cellGrouping.getDeviceStatus,
+    request: cellGrouping.requestDevice,
+    list: cellGrouping.listDevices,
+    decide: cellGrouping.decideDevice,
+  },
+};
 
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
-  const { isAdmin, loading, canViewInventory } = useRole();
+  const { isAdmin, loading, canViewInventory, currentUser, userRole } = useRole();
+  const {
+    canManageRules,
+    canProcessReports,
+    loading: groupingLoading,
+  } = useCellGroupingAccess(isAdmin, loading);
+  const canUseCellGrouping = canManageRules || canProcessReports;
   const {
     currentBranch,
     loading: branchLoading,
   } = useBranch();
 
-  // Redirect away from admin view if user is not admin
+  // Redirect away from admin-only views if user is not admin
   useEffect(() => {
-    if (currentView === "admin" && !loading && !isAdmin) {
+    if ((currentView === "admin" || currentView === "grading-history") && !loading && !isAdmin) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, isAdmin, loading]);
+
+  // Redirect away from cell grouping if the user is neither admin nor operator
+  useEffect(() => {
+    if (currentView === "cell-grouping" && !groupingLoading && !canUseCellGrouping) {
+      setCurrentView("ah-balancer");
+    }
+  }, [currentView, canUseCellGrouping, groupingLoading]);
 
   // Redirect away from inventory/accounting views if user doesn't have permission
   useEffect(() => {
@@ -32,16 +66,60 @@ function MainApp() {
     }
   }, [currentView, canViewInventory, loading]);
 
-  const navigationItems = useMemo(() => (
+  // Genie sidebar groups (value stream). Each group only appears when it has an item the user may open.
+  const navigationGroups = useMemo(() => (
     [
-      { id: "ah-balancer", label: "Job Optimizer", description: "Interactive 13SxP Balancer" },
-      ...(canViewInventory ? [
-        { id: "inventory", label: "Inventory", description: "Stock & Item Directory" },
-        { id: "accounting", label: "Accounting", description: "Sales, Purchases & Financials" }
-      ] : []),
-      ...(isAdmin ? [{ id: "admin", label: "Admin Studio", description: "Roles & Access Governance" }] : [])
-    ]
-  ), [canViewInventory, isAdmin]);
+      {
+        id: "pack",
+        label: "Pack manufacturing",
+        breadcrumb: "Pack manufacturing",
+        items: [{ id: "ah-balancer", label: "Job Optimizer", description: "Interactive 13SxP Balancer" }],
+      },
+      {
+        id: "grading",
+        label: "Cell grading",
+        breadcrumb: "Grading",
+        items: [
+          ...(canUseCellGrouping ? [{ id: "cell-grouping", label: "Group cells", description: "Grading report processing" }] : []),
+          ...(isAdmin ? [{ id: "grading-history", label: "Grading history", description: "Grading runs, inputs and reports (admin)" }] : []),
+        ],
+      },
+      {
+        id: "stores",
+        label: "Inventory & accounts",
+        breadcrumb: "Inventory & accounts",
+        items: canViewInventory
+          ? [
+              { id: "inventory", label: "Inventory", description: "Stock & Item Directory" },
+              { id: "accounting", label: "Accounting", description: "Sales, Purchases & Financials" },
+            ]
+          : [],
+      },
+      {
+        id: "setup",
+        label: "Set-up",
+        breadcrumb: "Set-up",
+        items: isAdmin ? [{ id: "admin", label: "Admin Studio", description: "Roles & Access Governance" }] : [],
+      },
+    ].filter((group) => group.items.length > 0)
+  ), [canViewInventory, isAdmin, canUseCellGrouping]);
+
+  const navigationItems = useMemo(() => navigationGroups.flatMap((group) => group.items), [navigationGroups]);
+
+  const shellUser = {
+    name: currentUser?.user_metadata?.full_name || currentUser?.email || "",
+    roleLabel: ROLE_METADATA[userRole]?.label || userRole || "User",
+    place: currentBranch ? currentBranch.name : "",
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await auth.signOut(); // the login wrapper reacts to the auth change
+    } catch (error) {
+      console.error("Logout error:", error);
+      alert("Logout failed. Please try again.");
+    }
+  };
 
   const filteredCommands = useMemo(() => {
     if (!commandQuery.trim()) return navigationItems;
@@ -78,79 +156,47 @@ function MainApp() {
   // Show loading state while checking admin status
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-genie-app">
         <div className="text-center space-y-3">
-          <div className="mx-auto h-12 w-12 rounded-full border-2 border-muted backdrop-blur-md flex items-center justify-center">
-            <span className="h-6 w-6 rounded-full border-2 border-accent border-t-transparent animate-spin"></span>
+          <div className="mx-auto h-12 w-12 rounded-full border-2 border-genie-border flex items-center justify-center">
+            <span className="h-6 w-6 rounded-full border-2 border-genie-primary border-t-transparent animate-spin"></span>
           </div>
-          <p className="text-muted-foreground text-sm tracking-wide uppercase">Checking permissions…</p>
+          <p className="text-genie-text-secondary text-sm">Checking permissions…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-40 border-b border-white/20 bg-white/70 backdrop-blur-md shadow-layer-sm dark:bg-slate-900/70">
-        <div className="mx-auto flex w-full max-w-7xl flex-col px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-accent/10 ring-1 ring-accent/30 flex items-center justify-center">
-                <span className="text-accent font-semibold">D</span>
+    <>
+      <GenieShell
+        groups={navigationGroups}
+        currentView={currentView}
+        onSelect={setCurrentView}
+        user={shellUser}
+        onSignOut={handleSignOut}
+        topBarRight={
+          <div className="flex items-center gap-3">
+            {currentBranch && (
+              <div className="hidden items-center gap-2 rounded-full bg-genie-muted px-4 py-2 text-sm md:flex">
+                <span className="text-xs font-medium text-genie-text-secondary">Branch</span>
+                <span className="font-medium text-genie-text">
+                  {currentBranch.name}
+                  {currentBranch.organizationName ? ` • ${currentBranch.organizationName}` : ""}
+                </span>
+                {branchLoading && <span className="h-2 w-2 rounded-full bg-genie-accent animate-pulse" aria-hidden="true"></span>}
               </div>
-              <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Duriyam Operate</p>
-                <h1 className="text-fluid-lg font-semibold">Operations Control Surface</h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {currentBranch && (
-                <div className="hidden sm:flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-xs shadow-sm backdrop-blur-md">
-                  <span className="font-medium text-muted-foreground uppercase tracking-[0.18em]">Branch</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {currentBranch.name}
-                    {currentBranch.organizationName ? ` • ${currentBranch.organizationName}` : ""}
-                  </span>
-                  {branchLoading && (
-                    <span className="h-2 w-2 rounded-full bg-accent animate-pulse" aria-hidden="true"></span>
-                  )}
-                </div>
-              )}
-              <button
-                onClick={() => setCommandOpen(true)}
-                className="hidden sm:flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-4 py-2 text-sm text-muted-foreground shadow-sm backdrop-blur-md transition hover:border-accent/50 hover:text-foreground"
-              >
-                <span>Quick Command</span>
-                <code className="rounded-md bg-muted/40 px-2 py-1 text-xs uppercase tracking-wider">Ctrl + K</code>
-              </button>
-            </div>
+            )}
+            <button
+              onClick={() => setCommandOpen(true)}
+              className="hidden items-center gap-2 rounded-full bg-genie-muted px-4 py-2 text-sm font-medium text-genie-text-secondary transition hover:text-genie-text sm:flex"
+            >
+              <span>Quick command</span>
+              <code className="rounded-md bg-genie-surface px-2 py-0.5 text-xs">Ctrl + K</code>
+            </button>
           </div>
-
-          <div className="mt-6 flex flex-wrap gap-2">
-            {navigationItems.map((item) => {
-              const isActive = currentView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setCurrentView(item.id)}
-                  className={`group flex items-center gap-3 rounded-full px-4 py-2 text-sm transition-all duration-200 ease-out-soft ${
-                    isActive
-                      ? "bg-accent text-accent-foreground shadow-layer-sm"
-                      : "bg-white/60 text-muted-foreground shadow-sm hover:bg-white/80"
-                  }`}
-                >
-                  <span className="font-medium">{item.label}</span>
-                  <span className={`hidden sm:inline text-xs ${isActive ? "text-accent-foreground/70" : "text-muted-foreground/70"}`}>
-                    {item.description}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1">
+        }
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={currentView}
@@ -158,9 +204,22 @@ function MainApp() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
             transition={{ duration: 0.28, ease: "easeOut" }}
-            className="mx-auto w-full max-w-7xl px-6 py-10"
+            className="mx-auto w-full max-w-7xl"
           >
             {currentView === "ah-balancer" && <App />}
+            {currentView === "cell-grouping" && canUseCellGrouping && (
+              <CellGrouping
+                canManageRules={canManageRules}
+                canProcessReports={canProcessReports}
+                loadRules={cellGrouping.getPublishedRules}
+                publishRules={cellGrouping.publishRules}
+                officeNetwork={officeNetwork}
+                recordRun={cellGrouping.recordRun}
+              />
+            )}
+            {currentView === "grading-history" && isAdmin && (
+              <GradingHistory listRuns={cellGrouping.listRuns} fileUrl={cellGrouping.runFileUrl} />
+            )}
             {currentView === "inventory" && <InventoryManagement />}
             {currentView === "accounting" && <AccountingDashboard />}
             {currentView === "admin" && isAdmin ? (
@@ -170,7 +229,7 @@ function MainApp() {
             ) : null}
           </motion.div>
         </AnimatePresence>
-      </main>
+      </GenieShell>
 
       <AnimatePresence>
         {commandOpen && (
@@ -237,7 +296,7 @@ function MainApp() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
 

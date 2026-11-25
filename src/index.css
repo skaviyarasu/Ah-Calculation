@@ -28,6 +28,30 @@
 
     --danger: rgba(248, 113, 113, 0.16);
     --danger-foreground: #b91c1c;
+
+    /* Genie theme tokens (Figma: Cell-Grouping-UI, Genie variables) */
+    --genie-bg-brand: #000b6d;
+    --genie-bg-app: #f4f6fb;
+    --genie-bg-surface: #ffffff;
+    --genie-bg-muted: #eef1f8;
+    --genie-action-primary: #000b6d;
+    --genie-action-primary-pressed: #052850;
+    --genie-action-danger: #d32f2f;
+    --genie-brand-accent: #7ec804;
+    --genie-text-primary: #2b3150;
+    --genie-text-secondary: #5b6385;
+    --genie-text-on-brand: #ffffff;
+    --genie-border-default: #d5dae8;
+    --genie-border-strong: #6b7588;
+    --genie-success-fg: #477a00;
+    --genie-success-bg: #e7f5ec;
+    --genie-success-border: #7ec804;
+    --genie-warning-fg: #8a5a00;
+    --genie-warning-border: #f5a623;
+    --genie-danger-fg: #9b0000;
+    --genie-info-fg: #174f86;
+    --genie-info-bg: #e8f1fb;
+    --genie-info-border: #1f6fb5;
   }
 
   .dark {
@@ -77,6 +101,32 @@
 }
 
 @layer components {
+  /* Genie building blocks (Figma: Cell-Grouping-UI) */
+  .genie-card {
+    @apply flex flex-col gap-4 rounded-genie-lg border border-genie-border bg-genie-surface p-6;
+  }
+  .genie-card-title {
+    @apply text-[18px] font-semibold leading-[1.4] text-genie-text;
+  }
+  .genie-field {
+    @apply h-12 w-full rounded-genie-md border border-genie-border-strong bg-genie-surface px-3 text-base leading-[1.4] text-genie-text focus:outline-none focus:ring-2 focus:ring-[rgba(0,11,109,0.3)];
+  }
+  .genie-label {
+    @apply text-sm font-medium leading-[1.4] text-genie-text;
+  }
+  .genie-btn-primary {
+    @apply inline-flex h-12 items-center justify-center rounded-genie-md bg-genie-primary px-6 py-2 text-base font-semibold leading-[1.4] text-white transition-colors hover:bg-genie-primary-pressed disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .genie-btn-secondary {
+    @apply inline-flex h-12 items-center justify-center rounded-genie-md border border-genie-border-strong bg-genie-surface px-6 py-2 text-base font-semibold leading-[1.4] text-genie-text transition-colors hover:bg-genie-muted disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .genie-pill {
+    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium leading-[1.4];
+  }
+  .genie-kpi {
+    @apply flex min-w-0 flex-1 flex-col gap-1 rounded-genie-md border border-genie-border bg-genie-surface p-4 leading-[1.4];
+  }
+
   .panel {
     @apply rounded-2xl bg-card shadow-layer-sm backdrop-blur-md border border-white/10;
   }

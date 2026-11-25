@@ -1,0 +1,12 @@
+steps:
+  - name: "Status-Good"
+    filter:
+      any:
+        - { col: "Status", op: "in", values: ["PASS", "OK"] }
+        - { col: "Batch", op: "IN", value: "B2" }          # op is case-insensitive, single value
+  - name: "Not-B1"
+    filter: { col: "Batch", op: "not in", values: ["B1"] }
+  - name: "Nin-Numbers"
+    filter: { col: "IR_Value", op: "nin", values: [10, "20", 30.0, "nan"] }
+  - name: "Null-Status"
+    filter: { col: "Status", op: "in", values: ["nan"] }  # "nan" matches empty cells

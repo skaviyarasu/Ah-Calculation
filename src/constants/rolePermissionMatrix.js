@@ -23,6 +23,10 @@ export const ROLE_METADATA = {
     label: 'Accountant',
     description: 'Manages day-to-day accounting functions such as contacts, sales, purchases, banking, and statutory compliance.'
   },
+  operator: {
+    label: 'Operator',
+    description: 'Processes cell grading reports with the grouping rules published by an administrator.'
+  },
   user: {
     label: 'Standard User',
     description: 'Can work on their own records with restricted visibility into broader system data.'
@@ -102,6 +106,30 @@ export const PERMISSION_MATRIX = [
           others: [
             makeEntry('export_all_data', 'data', 'Export all data', 'Export system-wide datasets for analysis.'),
             makeEntry('export_own_data', 'data', 'Export own data', 'Export data authored by the current user.')
+          ]
+        }
+      }
+    ]
+  },
+  {
+    module: 'Cell Grouping',
+    description: 'Grading report processing with the LFP / NMC grouping rules.',
+    rows: [
+      {
+        key: 'cell_grouping_rules',
+        label: 'Grouping Rules (YAML)',
+        actions: {
+          others: [
+            makeEntry('manage_grouping_rules', 'cell_grouping', 'Manage grouping rules', 'Upload and publish the LFP / NMC grouping rules used for grading reports.')
+          ]
+        }
+      },
+      {
+        key: 'cell_grouping_reports',
+        label: 'Grading Reports',
+        actions: {
+          others: [
+            makeEntry('process_grading_reports', 'cell_grouping', 'Process grading reports', 'Upload grading-machine reports and group cells with the published rules.')
           ]
         }
       }

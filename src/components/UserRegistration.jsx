@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { auth, supabase } from '../lib/supabase';
+import { adminUsers } from '../lib/supabase';
+
+const MIN_PASSWORD = 8;
 
 export default function UserRegistration({ onUserCreated }) {
   const [formData, setFormData] = useState({
@@ -40,8 +42,8 @@ export default function UserRegistration({ onUserCreated }) {
       return false;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (formData.password.length < MIN_PASSWORD) {
+      setError(`Password must be at least ${MIN_PASSWORD} characters long`);
       return false;
     }
 
@@ -69,52 +71,24 @@ export default function UserRegistration({ onUserCreated }) {
 
     setSubmitting(true);
     try {
-      // Use regular signUp (admin.createUser requires service role key)
-      // The user will be created in Supabase Auth
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      // Created on the server by the admin-create-user function (admins only); the admin stays signed in.
+      const roles = formData.initialRole
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r && r !== 'user');
+      const created = await adminUsers.create({
         email: formData.email.trim(),
         password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName.trim()
-          },
-          email_redirect_to: window.location.origin
-        }
+        fullName: formData.fullName.trim(),
+        roles,
       });
 
-      if (signUpError) throw signUpError;
-
-      if (!signUpData.user) {
-        throw new Error('User creation failed - no user data returned');
-      }
-
-      // Assign initial role(s) if specified
-      const currentUser = await auth.getCurrentUser();
-      if (currentUser && formData.initialRole && formData.initialRole !== 'user') {
-        const { rbac } = await import('../lib/supabase');
-        
-        // Handle multiple roles (e.g., "creator,verifier")
-        const rolesToAssign = formData.initialRole.split(',').map(r => r.trim());
-        
-        for (const role of rolesToAssign) {
-          if (role && role !== 'user') {
-            try {
-              await rbac.assignRole(signUpData.user.id, role, currentUser.id);
-            } catch (roleError) {
-              console.error(`Error assigning role ${role}:`, roleError);
-              // Continue with other roles even if one fails
-            }
-          }
-        }
-      }
-
-      setSuccess(`User registered successfully!\n\n` +
-        `User ID: ${signUpData.user.id}\n` +
-        `Email: ${formData.email}\n\n` +
-        `Note: ${signUpData.user.email_confirmed_at 
-          ? 'User can login immediately.' 
-          : 'User needs to verify their email before they can login.\n\n' +
-            'To enable immediate login, disable email confirmation in Supabase Dashboard → Authentication → Settings.'}`);
+      setSuccess(
+        `User created: ${created.email}\n` +
+          (created.roles?.length ? `Roles: ${created.roles.join(', ')}\n` : '') +
+          (created.failedRoles?.length ? `Could not assign: ${created.failedRoles.join(', ')} (assign them in User Management)\n` : '') +
+          'They can sign in now with the password you set.'
+      );
 
       // Reset form
       setFormData({
@@ -141,7 +115,7 @@ export default function UserRegistration({ onUserCreated }) {
     <div className="bg-white rounded-lg shadow-lg p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Register New User</h2>
       <p className="text-gray-600 mb-6">
-        Create a new user account in Supabase. The user will be able to login immediately if email confirmation is disabled.
+        Accounts are created by administrators only; public sign-up is switched off. The user can sign in straight away with the password you set.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -191,11 +165,11 @@ export default function UserRegistration({ onUserCreated }) {
             value={formData.password}
             onChange={handleChange}
             required
-            minLength={6}
+            minLength={MIN_PASSWORD}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Minimum 6 characters"
+            placeholder={`Minimum ${MIN_PASSWORD} characters`}
           />
-          <p className="text-xs text-gray-500 mt-1">Password must be at least 6 characters long</p>
+          <p className="text-xs text-gray-500 mt-1">Password must be at least {MIN_PASSWORD} characters long</p>
         </div>
 
         {/* Confirm Password */}
@@ -210,7 +184,7 @@ export default function UserRegistration({ onUserCreated }) {
             value={formData.confirmPassword}
             onChange={handleChange}
             required
-            minLength={6}
+            minLength={MIN_PASSWORD}
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             placeholder="Re-enter password"
           />
@@ -229,6 +203,7 @@ export default function UserRegistration({ onUserCreated }) {
             className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="user">Standard User (No specific role)</option>
+            <option value="operator">Operator (Processes grading reports)</option>
             <option value="creator">Creator (Can create jobs)</option>
             <option value="verifier">Verifier (Can review jobs)</option>
             <option value="creator,verifier">Creator + Verifier (Combined)</option>
@@ -289,11 +264,10 @@ export default function UserRegistration({ onUserCreated }) {
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
         <h3 className="text-sm font-semibold text-blue-800 mb-2">📝 Registration Notes:</h3>
         <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-          <li>Users will be created in Supabase Authentication</li>
-          <li>If email confirmation is enabled, users must verify their email before login</li>
-          <li>If email confirmation is disabled, users can login immediately</li>
-          <li>Initial role will be assigned automatically (you can change it later)</li>
-          <li>Password requirements: Minimum 6 characters</li>
+          <li>Only administrators can create accounts; there is no public sign-up</li>
+          <li>The account is ready to use at once; give the user their password in person</li>
+          <li>The initial role is assigned automatically (you can change it later); the admin role is assigned in User Management</li>
+          <li>Password requirements: minimum {MIN_PASSWORD} characters</li>
         </ul>
       </div>
     </div>
