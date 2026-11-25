@@ -6,6 +6,7 @@ import InventoryManagement from "./components/InventoryManagement";
 import AccountingDashboard from "./components/AccountingDashboard";
 import CellGrouping from "./components/CellGrouping";
 import GenieShell from "./components/GenieShell";
+import GradingHistory from "./components/GradingHistory";
 import { useRole } from "./hooks/useRole";
 import { useBranch } from "./hooks/useBranch";
 import { useCellGroupingAccess } from "./hooks/useCellGroupingAccess";
@@ -18,6 +19,13 @@ const officeNetwork = {
   list: cellGrouping.listOfficeIps,
   add: cellGrouping.addOfficeIp,
   remove: cellGrouping.removeOfficeIp,
+  // Approved devices (database/22_cell_grouping_devices.sql)
+  devices: {
+    getStatus: cellGrouping.getDeviceStatus,
+    request: cellGrouping.requestDevice,
+    list: cellGrouping.listDevices,
+    decide: cellGrouping.decideDevice,
+  },
 };
 
 function MainApp() {
@@ -36,9 +44,9 @@ function MainApp() {
     loading: branchLoading,
   } = useBranch();
 
-  // Redirect away from admin view if user is not admin
+  // Redirect away from admin-only views if user is not admin
   useEffect(() => {
-    if (currentView === "admin" && !loading && !isAdmin) {
+    if ((currentView === "admin" || currentView === "grading-history") && !loading && !isAdmin) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, isAdmin, loading]);
@@ -71,7 +79,10 @@ function MainApp() {
         id: "grading",
         label: "Cell grading",
         breadcrumb: "Grading",
-        items: canUseCellGrouping ? [{ id: "cell-grouping", label: "Group cells", description: "Grading report processing" }] : [],
+        items: [
+          ...(canUseCellGrouping ? [{ id: "cell-grouping", label: "Group cells", description: "Grading report processing" }] : []),
+          ...(isAdmin ? [{ id: "grading-history", label: "Grading history", description: "Grading runs, inputs and reports (admin)" }] : []),
+        ],
       },
       {
         id: "stores",
@@ -203,7 +214,11 @@ function MainApp() {
                 loadRules={cellGrouping.getPublishedRules}
                 publishRules={cellGrouping.publishRules}
                 officeNetwork={officeNetwork}
+                recordRun={cellGrouping.recordRun}
               />
+            )}
+            {currentView === "grading-history" && isAdmin && (
+              <GradingHistory listRuns={cellGrouping.listRuns} fileUrl={cellGrouping.runFileUrl} />
             )}
             {currentView === "inventory" && <InventoryManagement />}
             {currentView === "accounting" && <AccountingDashboard />}

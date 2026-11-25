@@ -10,6 +10,7 @@ import {
   DEFAULT_GROUP_COL,
   exportResults,
   isPerCellReport,
+  isUnassignedGroup,
   labelText,
   missingRuleColumns,
   parseRules,
@@ -22,6 +23,7 @@ import {
   readWorkbook,
   resultToCsv,
   summarizeGroups,
+  summarizeRun,
 } from '../lib/cellGrouping/index.ts';
 import type {
   BatchResult,
@@ -33,6 +35,7 @@ import type {
   PublishedRules,
   ReportInput,
   RuleSet,
+  RunSummary,
   Workbook,
 } from '../lib/cellGrouping/index.ts';
 
@@ -56,6 +59,25 @@ export interface CellGroupingProps {
   publishRules: (chemistry: string, fileName: string, yamlText: string) => Promise<PublishedRules>;
   /** Office-network restriction (database/20_cell_grouping_office_network.sql). Optional. */
   officeNetwork?: OfficeNetworkApi;
+  /** Saves each successful run in the grading history (database/21_cell_grouping_runs.sql). Optional. */
+  recordRun?: (run: RunRecord) => Promise<unknown>;
+}
+
+/** One successful run, as saved in the grading history. */
+export interface RunRecord {
+  chemistry: string;
+  rulesId: string;
+  rulesFileName: string;
+  inputKind: 'machine_export' | 'per_cell_reports' | 'csv';
+  inputFileName: string;
+  inputFileCount: number;
+  inputFileNames?: string[];
+  cellsRead: number;
+  cellsRemoved: number;
+  cellsNotConverted: number;
+  summary: RunSummary;
+  inputFile: { name: string; data: Uint8Array | string; type: string };
+  reportFile: { name: string; data: string; type: string };
 }
 
 export interface OfficeStatus {
@@ -81,6 +103,42 @@ export interface OfficeNetworkApi {
   list: () => Promise<OfficeIp[]>;
   add: (ipRange: string, label: string) => Promise<void>;
   remove: (ipRange: string) => Promise<void>;
+  /** Approved devices (database/22_cell_grouping_devices.sql). Optional. */
+  devices?: DeviceApi;
+}
+
+export type DeviceState = 'unknown' | 'pending' | 'active' | 'rejected' | 'revoked';
+
+export interface DeviceStatus {
+  /** false when migration 22 is not installed (no device approval). */
+  installed: boolean;
+  /** At least one device is approved, i.e. device approval is switched on. */
+  approvalOn: boolean;
+  status: DeviceState;
+  name: string | null;
+  problem: string | null;
+}
+
+export interface DeviceRow {
+  id: string;
+  name: string;
+  asset_tag: string | null;
+  mac_address: string | null;
+  status: Exclude<DeviceState, 'unknown'>;
+  user_agent: string | null;
+  requested_by_email: string | null;
+  requested_at: string;
+  decided_by_email: string | null;
+  decided_at: string | null;
+  revoked_by_email: string | null;
+  revoked_at: string | null;
+}
+
+export interface DeviceApi {
+  getStatus: () => Promise<DeviceStatus>;
+  request: (name: string) => Promise<string>;
+  list: () => Promise<DeviceRow[]>;
+  decide: (id: string, action: 'approve' | 'reject' | 'revoke', labels?: { name?: string; assetTag?: string; macAddress?: string }) => Promise<void>;
 }
 
 const formatCell = (c: Cell): string => (c === null ? '' : typeof c === 'boolean' ? (c ? 'TRUE' : 'FALSE') : String(c));
@@ -463,11 +521,13 @@ function ReportProcessor({
   published,
   advanced,
   reload,
+  recordRun,
 }: {
   published: PublishedMap;
   advanced: boolean;
   /** Fetches the latest published rules (and updates `published`). */
   reload: () => Promise<PublishedMap>;
+  recordRun?: (run: RunRecord) => Promise<unknown>;
 }) {
   const available = CHEMISTRIES.filter((c) => published[c.id]);
   const [chemistry, setChemistry] = useState<string>('');
@@ -494,6 +554,17 @@ function ReportProcessor({
   const [activeGroup, setActiveGroup] = useState(0);
   const [busy, setBusy] = useState(false);
   const [reloading, setReloading] = useState(false);
+  /** Grading-history save of the last run. */
+  const [recordState, setRecordState] = useState<{ state: 'saving' | 'saved' | 'failed'; message?: string } | null>(null);
+
+  /** Saves the run in the grading history in the background; never blocks or fails the grouping. */
+  const saveRun = (run: RunRecord) => {
+    if (!recordRun) return;
+    setRecordState({ state: 'saving' });
+    recordRun(run)
+      .then(() => setRecordState({ state: 'saved' }))
+      .catch((e: Error) => setRecordState({ state: 'failed', message: e.message }));
+  };
 
   const rules = chemistry ? published[chemistry] : undefined;
   const parsed = useMemo(() => (rules ? parseRules(rules.yaml_text) : null), [rules]);
@@ -505,6 +576,7 @@ function ReportProcessor({
     .join(' / ');
 
   const clearResult = () => {
+    setRecordState(null);
     setResult(null);
     setResultInfo(null);
     setMissing([]);
@@ -595,9 +667,27 @@ function ReportProcessor({
         const batchPre = batchPreprocess(batch, pre);
         const out = preprocessSheetRows(machineSheetRows(batch), batchPre);
         setMissing(missingRuleColumns(latestParsed.rules, out.frame));
-        setResult(applySteps(out.frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
+        const grouped = applySteps(out.frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL });
+        setResult(grouped);
         setResultInfo({ chemistry, rules: latest, conversion: { batch, names: batchPre.header ?? [] } });
         setActiveGroup(0);
+        const batchStem = batchFileStem(batch);
+        saveRun({
+          chemistry,
+          rulesId: latest.id,
+          rulesFileName: latest.file_name,
+          inputKind: 'per_cell_reports',
+          inputFileName: dataName,
+          inputFileCount: batch.reports.length,
+          inputFileNames: batch.reports.map((r) => r.fileName),
+          cellsRead: batch.reports.length,
+          cellsRemoved: out.droppedRows,
+          cellsNotConverted: batch.failed,
+          summary: summarizeRun(grouped),
+          // the raw per-cell files are large: the converted batch (machine layout) is saved instead
+          inputFile: { name: `${batchStem}.xlsx`, data: batchToXlsx(batch), type: XLSX_MIME },
+          reportFile: { name: `${batchStem}_${chemistry}_categorized.csv`, data: resultToCsv(grouped), type: 'text/csv' },
+        });
         return;
       }
       if (!workbook) return;
@@ -608,7 +698,8 @@ function ReportProcessor({
       const preprocessed = !isCsv && pre && fileBytes ? { ...preprocessExcel(fileBytes, pre, sheetName || undefined), pre } : undefined;
       const frame = preprocessed ? preprocessed.frame : workbook.sheet(sheetName || undefined);
       setMissing(missingRuleColumns(latestParsed.rules, frame));
-      setResult(applySteps(frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL }));
+      const grouped = applySteps(frame, latestParsed.rules, { groupCol: groupCol.trim() || DEFAULT_GROUP_COL });
+      setResult(grouped);
       setResultInfo({
         chemistry,
         rules: latest,
@@ -622,6 +713,23 @@ function ReportProcessor({
         excelWithoutPreprocess: !isCsv && !pre,
       });
       setActiveGroup(0);
+      if (fileBytes) {
+        const fileStem = dataName.replace(/\.[^.]+$/, '') || 'cells';
+        saveRun({
+          chemistry,
+          rulesId: latest.id,
+          rulesFileName: latest.file_name,
+          inputKind: isCsv ? 'csv' : 'machine_export',
+          inputFileName: dataName,
+          inputFileCount: 1,
+          cellsRead: frame.length + (preprocessed?.droppedRows ?? 0),
+          cellsRemoved: preprocessed?.droppedRows ?? 0,
+          cellsNotConverted: 0,
+          summary: summarizeRun(grouped),
+          inputFile: { name: dataName, data: fileBytes, type: isCsv ? 'text/csv' : XLSX_MIME },
+          reportFile: { name: `${fileStem}_${chemistry}_categorized.csv`, data: resultToCsv(grouped), type: 'text/csv' },
+        });
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -693,8 +801,7 @@ function ReportProcessor({
   const excluded = result ? result.frame.length - result.outputRows.length : 0;
 
   // "Unassigned" = cells labelled by a catch-all step (no filter) or by no step at all.
-  const catchAll = new Set((result?.rules.steps ?? []).filter((st) => st.filter === null).map((st) => String(st.name)));
-  const isUnassigned = (g: GroupSummary) => g.label === null || (g.steps.length > 0 && g.steps.every((st) => catchAll.has(String(st))));
+  const isUnassigned = (g: GroupSummary) => (result ? isUnassignedGroup(result, g) : false);
   const unassignedCount = kept.filter(isUnassigned).reduce((n, g) => n + g.rows.length, 0);
   const assigned = kept.filter((g) => !isUnassigned(g)).sort((a, b) => b.rows.length - a.rows.length);
   const tableRows = result
@@ -891,7 +998,12 @@ function ReportProcessor({
       {result && resultInfo && (
         <section className="genie-card">
           <h3 className="genie-card-title">3 · Result</h3>
-          <p className="text-xs leading-[1.4] text-genie-text-secondary">Rules used: {rulesUsed}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs leading-[1.4] text-genie-text-secondary">Rules used: {rulesUsed}</p>
+            {recordState?.state === 'saving' && <span className="text-xs text-genie-text-secondary">Saving to the grading history…</span>}
+            {recordState?.state === 'saved' && <StatusPill tone="success">Recorded in the grading history</StatusPill>}
+            {recordState?.state === 'failed' && <StatusPill tone="warning">Not recorded in the grading history: {recordState.message}</StatusPill>}
+          </div>
 
           {resultInfo.conversion && (
             <div className="flex flex-col gap-3 rounded-genie-md bg-genie-muted p-4 leading-[1.4]">
@@ -1221,14 +1333,300 @@ function OfficeNetworkCard({ api, status, onChanged }: { api: OfficeNetworkApi; 
   );
 }
 
-export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules, officeNetwork }: CellGroupingProps) {
+// ---------------------------------------------------------------------------
+// Approved devices: notice for unapproved devices, admin approval card
+// ---------------------------------------------------------------------------
+
+function DeviceNotice({ api, status, onChanged }: { api: DeviceApi; status: DeviceStatus; onChanged: () => void }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const canRequest = status.status === 'unknown' || status.status === 'revoked' || status.status === 'rejected';
+
+  const request = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.request(name.trim());
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const title =
+    status.status === 'pending'
+      ? 'Waiting for administrator approval'
+      : status.status === 'revoked'
+        ? 'Access for this device was revoked'
+        : status.status === 'rejected'
+          ? 'The request for this device was rejected'
+          : 'This device is not approved for Group cells';
+
+  return (
+    <section className="genie-card">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="genie-card-title">{title}</h3>
+        <StatusPill tone={status.status === 'pending' ? 'info' : 'warning'}>
+          {status.status === 'pending' ? 'Pending approval' : 'Device not approved'}
+        </StatusPill>
+      </div>
+      <p className="text-sm leading-[1.4] text-genie-text-secondary">
+        {status.status === 'pending'
+          ? `This device${status.name ? ` ("${status.name}")` : ''} has asked for access. An administrator approves it in Group cells → Approved devices.`
+          : 'Group cells works only on devices approved by an administrator. Give this device a name and request access.'}
+      </p>
+      {canRequest && (
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex max-w-sm basis-72 flex-col gap-1">
+            <span className="genie-label">Device name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Grading station 1" className="genie-field" />
+          </label>
+          <button type="button" disabled={busy || !name.trim()} onClick={request} className="genie-btn-primary">
+            {busy ? 'Requesting…' : status.status === 'unknown' ? 'Request access' : 'Request access again'}
+          </button>
+        </div>
+      )}
+      {status.status === 'pending' && (
+        <div>
+          <button type="button" onClick={onChanged} className="genie-btn-secondary">
+            Check again
+          </button>
+        </div>
+      )}
+      {error && <IssueList title="Request failed" issues={[{ path: '', message: error }]} tone="error" />}
+    </section>
+  );
+}
+
+const DEVICE_TONE: Record<DeviceRow['status'], PillTone> = { pending: 'info', active: 'success', rejected: 'danger', revoked: 'warning' };
+const DEVICE_LABEL: Record<DeviceRow['status'], string> = { pending: 'Pending', active: 'Active', rejected: 'Rejected', revoked: 'Revoked' };
+
+function PendingDeviceRow({
+  row,
+  busy,
+  onDecide,
+}: {
+  row: DeviceRow;
+  busy: boolean;
+  onDecide: (action: 'approve' | 'reject', labels?: { name: string; assetTag: string; macAddress: string }) => void;
+}) {
+  const [name, setName] = useState(row.name);
+  const [assetTag, setAssetTag] = useState('');
+  const [macAddress, setMacAddress] = useState('');
+  return (
+    <div className="flex flex-col gap-3 rounded-genie-md border border-genie-info-border bg-genie-info-bg p-4 text-sm leading-[1.4]">
+      <p className="text-genie-text">
+        <span className="font-medium">{row.name}</span> · requested by {row.requested_by_email ?? '—'} on {formatDate(row.requested_at)}
+      </p>
+      {row.user_agent && (
+        <p className="truncate text-xs text-genie-text-secondary" title={row.user_agent}>
+          {row.user_agent}
+        </p>
+      )}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex basis-56 flex-col gap-1">
+          <span className="genie-label">Device name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="genie-field" />
+        </label>
+        <label className="flex basis-40 flex-col gap-1">
+          <span className="genie-label">Asset tag (label)</span>
+          <input value={assetTag} onChange={(e) => setAssetTag(e.target.value)} placeholder="DM-PC-014" className="genie-field" />
+        </label>
+        <label className="flex basis-48 flex-col gap-1">
+          <span className="genie-label">MAC address (label)</span>
+          <input value={macAddress} onChange={(e) => setMacAddress(e.target.value)} placeholder="3C:52:82:1A:9F:07" className="genie-field" />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !name.trim()}
+          onClick={() => onDecide('approve', { name, assetTag, macAddress })}
+          className="genie-btn-primary"
+        >
+          Approve
+        </button>
+        <button type="button" disabled={busy} onClick={() => onDecide('reject')} className="genie-btn-secondary">
+          Reject
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DevicesCard({ api, status, onChanged }: { api: DeviceApi; status: DeviceStatus; onChanged: () => void }) {
+  const [rows, setRows] = useState<DeviceRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [myName, setMyName] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await api.list());
+    } catch (e) {
+      setError(`Could not load the devices: ${(e as Error).message}`);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+      await load();
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const activeCount = rows.filter((r) => r.status === 'active').length;
+  const decide = (row: DeviceRow, action: 'approve' | 'reject' | 'revoke', labels?: { name?: string; assetTag?: string; macAddress?: string }) => {
+    if (
+      action === 'approve' &&
+      activeCount === 0 &&
+      !window.confirm(
+        'Approving the first device switches device approval on: from then on Group cells works only on approved devices (administrators exempt). Continue?',
+      )
+    )
+      return;
+    if (
+      action === 'revoke' &&
+      !window.confirm(`Revoke "${row.name}"? It is blocked at once and needs a new request and approval to get access again.`)
+    )
+      return;
+    if (action === 'reject' && !window.confirm(`Reject the request for "${row.name}"?`)) return;
+    act(() => api.decide(row.id, action, labels));
+  };
+
+  const pending = rows.filter((r) => r.status === 'pending');
+  const others = rows.filter((r) => r.status !== 'pending');
+
+  return (
+    <section className="genie-card">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="genie-card-title">Approved devices</h3>
+        <StatusPill tone="info">Admin only</StatusPill>
+        {status.approvalOn ? (
+          <StatusPill tone="success">On: Group cells works only on approved devices</StatusPill>
+        ) : (
+          <StatusPill tone="warning">Off until the first device is approved</StatusPill>
+        )}
+      </div>
+      <p className="text-xs leading-[1.4] text-genie-text-secondary">
+        Operators request access from the device they use; you approve it here. Revoking is immediate and final: the device must request again and be
+        approved again. Approved devices still work only from the office network. MAC address and asset tag are labels for your records and the
+        firewall list.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-genie-md bg-genie-muted p-4 text-sm leading-[1.4]">
+        <span className="font-medium text-genie-text">
+          This browser: {status.status === 'unknown' ? 'not registered' : `${DEVICE_LABEL[status.status]}${status.name ? ` ("${status.name}")` : ''}`}
+        </span>
+        {(status.status === 'unknown' || status.status === 'revoked' || status.status === 'rejected') && (
+          <>
+            <input
+              value={myName}
+              onChange={(e) => setMyName(e.target.value)}
+              placeholder="Device name, e.g. Grading station 1"
+              className="genie-field h-10 max-w-xs"
+            />
+            <button
+              type="button"
+              disabled={busy || !myName.trim()}
+              onClick={() => act(() => api.request(myName.trim()))}
+              className="text-genie-primary underline-offset-2 hover:underline disabled:opacity-40"
+            >
+              Request approval for this browser
+            </button>
+          </>
+        )}
+      </div>
+
+      {pending.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <p className="text-base font-semibold leading-[1.4] text-genie-text">Waiting for approval ({pending.length})</p>
+          {pending.map((row) => (
+            <PendingDeviceRow key={row.id} row={row} busy={busy} onDecide={(action, labels) => decide(row, action, labels)} />
+          ))}
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left text-sm leading-[1.4]">
+            <thead>
+              <tr className="text-genie-text-secondary">
+                {['Device', 'Asset tag', 'MAC (label)', 'Requested by', 'Status', ''].map((h) => (
+                  <th key={h} className="whitespace-nowrap py-2 pr-4 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {others.map((row) => (
+                <tr key={row.id} className="border-t border-genie-border text-genie-text">
+                  <td className="py-2 pr-4 font-medium">{row.name}</td>
+                  <td className="py-2 pr-4">{row.asset_tag ?? '—'}</td>
+                  <td className="py-2 pr-4">{row.mac_address ?? '—'}</td>
+                  <td className="py-2 pr-4">{row.requested_by_email ?? '—'}</td>
+                  <td className="py-2 pr-4">
+                    <StatusPill tone={DEVICE_TONE[row.status]}>{DEVICE_LABEL[row.status]}</StatusPill>
+                    <span className="ml-2 text-xs text-genie-text-secondary">
+                      {row.status === 'revoked'
+                        ? `${row.revoked_at ? formatDate(row.revoked_at) : ''}${row.revoked_by_email ? ` by ${row.revoked_by_email}` : ''}`
+                        : `${row.decided_at ? formatDate(row.decided_at) : ''}${row.decided_by_email ? ` by ${row.decided_by_email}` : ''}`}
+                    </span>
+                  </td>
+                  <td className="py-2 text-right">
+                    {row.status === 'active' && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => decide(row, 'revoke')}
+                        className="text-genie-danger-fg underline-offset-2 hover:underline"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!rows.length && <p className="text-sm text-genie-text-secondary">No device has requested access yet.</p>}
+      {error && <IssueList title="Approved devices" issues={[{ path: '', message: error }]} tone="error" />}
+    </section>
+  );
+}
+
+export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules, officeNetwork, recordRun }: CellGroupingProps) {
   const [published, setPublished] = useState<PublishedMap>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [office, setOffice] = useState<OfficeStatus | null>(null);
+  const [device, setDevice] = useState<DeviceStatus | null>(null);
 
   const checkOffice = useCallback(async () => {
-    if (officeNetwork) setOffice(await officeNetwork.getStatus());
+    if (!officeNetwork) return;
+    setOffice(await officeNetwork.getStatus());
+    if (officeNetwork.devices) {
+      try {
+        setDevice(await officeNetwork.devices.getStatus());
+      } catch {
+        setDevice(null);
+      }
+    }
   }, [officeNetwork]);
 
   const refresh = useCallback(async () => {
@@ -1238,7 +1636,10 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
       await checkOffice();
       setPublished(await loadRules());
     } catch (e) {
-      setLoadError((e as Error).message);
+      if ((e as { accessProblem?: string }).accessProblem) {
+        setPublished({});
+        await checkOffice().catch(() => undefined);
+      } else setLoadError((e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -1293,8 +1694,19 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
 
       {!loading && !loadError && canProcessReports && office && !office.isAdmin && !office.fromOffice ? (
         <OfficeOnlyNotice status={office} onRetry={refresh} />
+      ) : !loading &&
+        !loadError &&
+        canProcessReports &&
+        officeNetwork?.devices &&
+        device?.installed &&
+        !office?.isAdmin &&
+        device.approvalOn &&
+        device.status !== 'active' ? (
+        <DeviceNotice api={officeNetwork.devices} status={device} onChanged={refresh} />
       ) : (
-        !loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />
+        !loading &&
+        !loadError &&
+        canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} recordRun={recordRun} />
       )}
 
       {!loading && !loadError && canManageRules && (
@@ -1322,6 +1734,9 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
       )}
       {!loading && !loadError && canManageRules && officeNetwork && office && (
         <OfficeNetworkCard api={officeNetwork} status={office} onChanged={() => checkOffice().catch(() => undefined)} />
+      )}
+      {!loading && !loadError && canManageRules && officeNetwork?.devices && device?.installed && (
+        <DevicesCard api={officeNetwork.devices} status={device} onChanged={() => checkOffice().catch(() => undefined)} />
       )}
     </div>
   );

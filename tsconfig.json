@@ -17,5 +17,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/vite-env.d.ts", "src/lib/cellGrouping/**/*.ts", "src/components/CellGrouping.tsx", "tests/**/*.ts"]
+  "include": ["src/vite-env.d.ts", "src/lib/cellGrouping/**/*.ts", "src/components/CellGrouping.tsx", "src/components/GradingHistory.tsx", "tests/**/*.ts"]
 }

@@ -2050,6 +2050,42 @@ export const accounting = {
   }
 }
 
+// Approved devices for Group cells (database/22_cell_grouping_devices.sql): a random secret key kept
+// in this browser identifies the device; the database stores only its hash.
+const DEVICE_KEY_STORAGE = 'cellGrouping:deviceKey'
+
+function newDeviceKey() {
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const key = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  localStorage.setItem(DEVICE_KEY_STORAGE, key)
+  return key
+}
+
+function deviceKey({ create = false } = {}) {
+  const key = localStorage.getItem(DEVICE_KEY_STORAGE)
+  if (key && /^[0-9a-f]{64}$/.test(key)) return key
+  return create ? newDeviceKey() : null
+}
+
+/** PostgREST "function not found": migration 22 is not installed yet, use the older direct access. */
+const functionMissing = (error) => error?.code === 'PGRST202' || /Could not find the function/i.test(error?.message || '')
+
+/** Access problems raised by the database: NOT_SIGNED_IN, NO_PERMISSION, OFFICE_ONLY, DEVICE_NOT_APPROVED. */
+const ACCESS_MESSAGES = {
+  NOT_SIGNED_IN: 'Your session has expired. Sign in again.',
+  NO_PERMISSION: 'You do not have access to Group cells. Ask an administrator for the Operator role.',
+  OFFICE_ONLY: 'Group cells is available on the office network only.',
+  DEVICE_NOT_APPROVED: 'This device is not approved for Group cells (or its approval was revoked). Reload the page to request access.'
+}
+
+function accessError(error) {
+  const code = Object.keys(ACCESS_MESSAGES).find((c) => (error?.message || '').includes(c))
+  const e = new Error(code ? ACCESS_MESSAGES[code] : error?.message || 'Request failed')
+  if (code) e.accessProblem = code
+  return e
+}
+
 // Cell grouping: role checks and published LFP/NMC rules (database/19_add_cell_grouping.sql)
 export const cellGrouping = {
   /** Whether the signed-in user may publish rules and/or process grading reports (checks all their roles). */
@@ -2074,11 +2110,15 @@ export const cellGrouping = {
 
   /** Newest published rules per chemistry: { [chemistry]: { id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at } } */
   async getPublishedRules() {
-    const { data, error } = await supabase
-      .from('cell_grouping_rules')
-      .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
-      .order('uploaded_at', { ascending: false })
-    if (error) throw error
+    // Checked every time: permission + office network + approved device (admins exempt).
+    let { data, error } = await supabase.rpc('cell_grouping_published_rules', { p_device_key: deviceKey() })
+    if (error && functionMissing(error)) {
+      ;({ data, error } = await supabase
+        .from('cell_grouping_rules')
+        .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
+        .order('uploaded_at', { ascending: false }))
+    }
+    if (error) throw accessError(error)
     const latest = {}
     for (const row of data || []) {
       if (!latest[row.chemistry]) latest[row.chemistry] = row
@@ -2123,6 +2163,132 @@ export const cellGrouping = {
   async removeOfficeIp(ipRange) {
     const { error } = await supabase.from('cell_grouping_office_ips').delete().eq('ip_range', ipRange)
     if (error) throw error
+  },
+
+  /**
+   * Records one successful grouping run in the grading history (database/21_cell_grouping_runs.sql):
+   * uploads the input and the grouped CSV to the private bucket, then adds the run row.
+   * run = { chemistry, rulesId, rulesFileName, inputKind, inputFileName, inputFileCount, inputFileNames,
+   *         cellsRead, cellsRemoved, cellsNotConverted, summary: { cellsGrouped, groupCounts, unassignedCount, rejectedCount },
+   *         inputFile: { name, data: Uint8Array|string, type }, reportFile: { name, data: string, type } }
+   */
+  async recordRun(run) {
+    const user = await auth.getCurrentUser()
+    if (!user) throw new Error('Not signed in')
+    const id = crypto.randomUUID()
+    const now = new Date()
+    const folder = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}`
+    const safe = (name) => String(name || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 120)
+    const upload = async (kind, file) => {
+      if (!file) return null
+      const path = `${folder}/${kind}/${safe(file.name)}`
+      const body = new Blob([file.data], { type: file.type || 'application/octet-stream' })
+      const { error } = await supabase.storage.from('cell-grouping-runs').upload(path, body, { contentType: body.type, upsert: false })
+      if (error) throw new Error(`Could not save the ${kind} file: ${error.message}`)
+      return path
+    }
+    const pathFor = (kind, file) => (file ? `${folder}/${kind}/${safe(file.name)}` : null)
+    const inputPath = pathFor('input', run.inputFile)
+    const reportPath = pathFor('report', run.reportFile)
+    const row = {
+      id,
+      chemistry: run.chemistry,
+      rules_id: run.rulesId ?? null,
+      rules_file_name: run.rulesFileName ?? null,
+      input_kind: run.inputKind,
+      input_file_name: run.inputFileName,
+      input_file_count: run.inputFileCount ?? 1,
+      input_file_names: run.inputFileNames ?? null,
+      cells_read: run.cellsRead ?? null,
+      cells_removed: run.cellsRemoved ?? 0,
+      cells_not_converted: run.cellsNotConverted ?? 0,
+      cells_grouped: run.summary.cellsGrouped,
+      group_counts: run.summary.groupCounts,
+      unassigned_count: run.summary.unassignedCount,
+      rejected_count: run.summary.rejectedCount,
+      input_path: inputPath,
+      report_path: reportPath
+    }
+    // Checked every time (permission + office network + approved device); the files can only be
+    // uploaded for a run recorded this way.
+    const { error } = await supabase.rpc('cell_grouping_record_run', { p_device_key: deviceKey(), p_run: row })
+    if (error && functionMissing(error)) {
+      // migration 22 not installed: files first, then the row (migration 21 policies)
+      await upload('input', run.inputFile)
+      await upload('report', run.reportFile)
+      const { error: insertError } = await supabase.from('cell_grouping_runs').insert({ ...row, user_id: user.id, user_email: user.email ?? null })
+      if (insertError) throw new Error(`Could not record the run: ${insertError.message}`)
+      return id
+    }
+    if (error) throw accessError(error)
+    await upload('input', run.inputFile)
+    await upload('report', run.reportFile)
+    return id
+  },
+
+  /**
+   * This browser's device status: { installed, approvalOn, status: 'unknown'|'pending'|'active'|'rejected'|'revoked', name, problem }.
+   * installed = false when migration 22 is not installed (no device approval).
+   */
+  async getDeviceStatus() {
+    const { data, error } = await supabase.rpc('cell_grouping_device_status', { p_device_key: deviceKey() })
+    if (error) {
+      if (functionMissing(error)) return { installed: false, approvalOn: false, status: 'unknown', name: null, problem: null }
+      throw error
+    }
+    return { installed: true, approvalOn: Boolean(data?.approval_on), status: data?.status ?? 'unknown', name: data?.name ?? null, problem: data?.problem ?? null }
+  },
+
+  /** Asks an administrator to approve this device. A revoked/rejected key is replaced by a new one. */
+  async requestDevice(name) {
+    const ask = async (key) => {
+      const { data, error } = await supabase.rpc('cell_grouping_request_device', { p_device_key: key, p_name: name, p_user_agent: navigator.userAgent })
+      if (error) throw new Error(error.message)
+      return data?.status
+    }
+    let status = await ask(deviceKey({ create: true }))
+    if (status === 'revoked' || status === 'rejected') status = await ask(newDeviceKey())
+    return status
+  },
+
+  /** All devices (admins only). */
+  async listDevices() {
+    const { data, error } = await supabase
+      .from('cell_grouping_devices')
+      .select('id, name, asset_tag, mac_address, status, user_agent, requested_by_email, requested_at, decided_by_email, decided_at, revoked_by_email, revoked_at')
+      .order('requested_at', { ascending: false })
+    if (error) throw error
+    return data || []
+  },
+
+  /** Admin decision: action = 'approve' | 'reject' | 'revoke'; labels = { name, assetTag, macAddress } (approve only). */
+  async decideDevice(id, action, labels = {}) {
+    const { error } = await supabase.rpc('cell_grouping_decide_device', {
+      p_id: id,
+      p_action: action,
+      p_name: labels.name ?? null,
+      p_asset_tag: labels.assetTag ?? null,
+      p_mac_address: labels.macAddress ?? null
+    })
+    if (error) throw new Error(error.message)
+  },
+
+  /** Grading history (admins only; enforced by RLS). Newest first. filters: { from, to, chemistry } (ISO dates). */
+  async listRuns({ from, to, chemistry } = {}) {
+    let query = supabase.from('cell_grouping_runs').select('*').order('created_at', { ascending: false }).limit(1000)
+    if (from) query = query.gte('created_at', from)
+    if (to) query = query.lt('created_at', to)
+    if (chemistry) query = query.eq('chemistry', chemistry)
+    const { data, error } = await query
+    if (error) throw error
+    return data || []
+  },
+
+  /** Short-lived download link for a saved run file (admins only). */
+  async runFileUrl(path) {
+    const { data, error } = await supabase.storage.from('cell-grouping-runs').createSignedUrl(path, 120, { download: true })
+    if (error) throw error
+    return data.signedUrl
   },
 
   /** Publishes a new version of the rules for one chemistry (admin only; enforced by RLS). */

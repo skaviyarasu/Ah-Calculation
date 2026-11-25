@@ -20,6 +20,8 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`14_add_voltage_to_cell_capacities.sql`** - Adds a voltage column so AH balancer jobs can store per-cell voltage readings
 - **`19_add_cell_grouping.sql`** - Adds the `operator` role, the `manage_grouping_rules` (admin) and `process_grading_reports` (admin, operator) permissions, and the `cell_grouping_rules` table holding published LFP/NMC YAML versions
 - **`20_cell_grouping_office_network.sql`** - Group cells only from the office network: `cell_grouping_office_ips` (admin-managed list of office IPs; empty = restriction off), `cell_grouping_office_status()` and an office-IP condition on reading `cell_grouping_rules` (admins exempt)
+- **`21_cell_grouping_runs.sql`** - Grading history: `cell_grouping_runs` (one row per Assign groups; processors insert, admins read, no updates/deletes) and the private storage bucket `cell-grouping-runs` for the saved input and grouping report
+- **`22_cell_grouping_devices.sql`** - Approved devices for Group cells: `cell_grouping_devices` (hash of a browser key; pending/active/rejected/revoked, switches on with the first approval), request/decide functions, and rules/runs only through checked functions (`cell_grouping_published_rules`, `cell_grouping_record_run`)
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention
