@@ -19,6 +19,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`13_add_accounting_permissions.sql`** - Seeds role permissions for accounting modules and recognises the new accountant role in RBAC helpers
 - **`14_add_voltage_to_cell_capacities.sql`** - Adds a voltage column so AH balancer jobs can store per-cell voltage readings
 - **`19_add_cell_grouping.sql`** - Adds the `operator` role, the `manage_grouping_rules` (admin) and `process_grading_reports` (admin, operator) permissions, and the `cell_grouping_rules` table holding published LFP/NMC YAML versions
+- **`20_cell_grouping_office_network.sql`** - Group cells only from the office network: `cell_grouping_office_ips` (admin-managed list of office IPs; empty = restriction off), `cell_grouping_office_status()` and an office-IP condition on reading `cell_grouping_rules` (admins exempt)
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention

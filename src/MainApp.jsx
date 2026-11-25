@@ -12,6 +12,14 @@ import { useCellGroupingAccess } from "./hooks/useCellGroupingAccess";
 import { auth, cellGrouping } from "./lib/supabase";
 import { ROLE_METADATA } from "./constants/rolePermissionMatrix";
 
+// Office-network restriction for Group cells (database/20_cell_grouping_office_network.sql)
+const officeNetwork = {
+  getStatus: cellGrouping.getOfficeStatus,
+  list: cellGrouping.listOfficeIps,
+  add: cellGrouping.addOfficeIp,
+  remove: cellGrouping.removeOfficeIp,
+};
+
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
   const [commandOpen, setCommandOpen] = useState(false);
@@ -194,6 +202,7 @@ function MainApp() {
                 canProcessReports={canProcessReports}
                 loadRules={cellGrouping.getPublishedRules}
                 publishRules={cellGrouping.publishRules}
+                officeNetwork={officeNetwork}
               />
             )}
             {currentView === "inventory" && <InventoryManagement />}

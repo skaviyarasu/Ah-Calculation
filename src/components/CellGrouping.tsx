@@ -54,6 +54,33 @@ export interface CellGroupingProps {
   loadRules: () => Promise<PublishedMap>;
   /** Publishes a new version for one chemistry and returns the stored row. */
   publishRules: (chemistry: string, fileName: string, yamlText: string) => Promise<PublishedRules>;
+  /** Office-network restriction (database/20_cell_grouping_office_network.sql). Optional. */
+  officeNetwork?: OfficeNetworkApi;
+}
+
+export interface OfficeStatus {
+  /** At least one office IP is listed, i.e. the restriction is switched on. */
+  configured: boolean;
+  fromOffice: boolean;
+  isAdmin: boolean;
+  /** Public IP the database sees for this browser. */
+  clientIp: string | null;
+  /** Admins only: IP-related request headers the database receives (to verify detection). */
+  ipHeaders?: Record<string, string> | null;
+}
+
+export interface OfficeIp {
+  ip_range: string;
+  label: string | null;
+  created_at: string;
+}
+
+export interface OfficeNetworkApi {
+  /** null when the migration is not installed. */
+  getStatus: () => Promise<OfficeStatus | null>;
+  list: () => Promise<OfficeIp[]>;
+  add: (ipRange: string, label: string) => Promise<void>;
+  remove: (ipRange: string) => Promise<void>;
 }
 
 const formatCell = (c: Cell): string => (c === null ? '' : typeof c === 'boolean' ? (c ? 'TRUE' : 'FALSE') : String(c));
@@ -93,7 +120,9 @@ function downloadBytes(bytes: Uint8Array | string, filename: string, type = XLSX
 function IssueList({ title, issues, tone }: { title: string; issues: { path: string; message: string }[]; tone: 'error' | 'warn' }) {
   if (!issues.length) return null;
   const color =
-    tone === 'error' ? 'border-[rgba(211,47,47,0.4)] bg-[#fdecec] text-genie-danger-fg' : 'border-genie-warning-border bg-[#fff6e5] text-genie-warning-fg';
+    tone === 'error'
+      ? 'border-[rgba(211,47,47,0.4)] bg-[#fdecec] text-genie-danger-fg'
+      : 'border-genie-warning-border bg-[#fff6e5] text-genie-warning-fg';
   return (
     <div className={`rounded-genie-md border px-4 py-3 text-sm leading-[1.4] ${color}`}>
       <p className="font-medium">{title}</p>
@@ -1015,22 +1044,205 @@ function ReportProcessor({
 
 // ---------------------------------------------------------------------------
 
-export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules }: CellGroupingProps) {
+// ---------------------------------------------------------------------------
+// Office network only (Option B): operators outside the office see a notice;
+// admins manage the allowed office IPs.
+// ---------------------------------------------------------------------------
+
+const IP_OR_RANGE = /^(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]+:[0-9a-fA-F:.]*)(\/\d{1,3})?$/;
+
+function OfficeOnlyNotice({ status, onRetry }: { status: OfficeStatus; onRetry: () => void }) {
+  return (
+    <section className="genie-card">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="genie-card-title">Group cells is available on the office network only</h3>
+        <StatusPill tone="warning">Outside the office network</StatusPill>
+      </div>
+      <p className="text-sm leading-[1.4] text-genie-text-secondary">
+        Connect from the office (or through the office VPN) to process grading reports. Your connection: {status.clientIp ?? 'not detected'}.
+      </p>
+      <div>
+        <button type="button" onClick={onRetry} className="genie-btn-secondary">
+          Check again
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function OfficeNetworkCard({ api, status, onChanged }: { api: OfficeNetworkApi; status: OfficeStatus; onChanged: () => void }) {
+  const [ips, setIps] = useState<OfficeIp[]>([]);
+  const [ipInput, setIpInput] = useState('');
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      setIps(await api.list());
+    } catch (e) {
+      setError(`Could not load the office IPs: ${(e as Error).message}`);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const add = async (ip: string, text: string) => {
+    const value = ip.trim();
+    if (!IP_OR_RANGE.test(value)) {
+      setError('Enter an IP address (e.g. 203.0.113.10) or a range (e.g. 203.0.113.0/29).');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api.add(value, text.trim());
+      setIpInput('');
+      setLabel('');
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(`Could not add ${value}: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (ipRange: string) => {
+    if (
+      ips.length === 1 &&
+      !window.confirm('Removing the last office IP switches the restriction off: Group cells will work from any network. Continue?')
+    )
+      return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.remove(ipRange);
+      await load();
+      onChanged();
+    } catch (e) {
+      setError(`Could not remove ${ipRange}: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const myIpListed = status.clientIp !== null && status.fromOffice && status.configured;
+
+  return (
+    <section className="genie-card">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="genie-card-title">Office network</h3>
+        <StatusPill tone="info">Admin only</StatusPill>
+        {status.configured ? (
+          <StatusPill tone="success">On: Group cells works only from these networks</StatusPill>
+        ) : (
+          <StatusPill tone="warning">Off: Group cells works from any network</StatusPill>
+        )}
+      </div>
+      <p className="text-xs leading-[1.4] text-genie-text-secondary">
+        Operators can use Group cells only from the office IPs listed here; administrators are exempt so they can always fix this list.
+        {!status.configured && ' Add the office static IP to switch the restriction on.'}
+      </p>
+      <div className="flex flex-wrap items-center gap-3 rounded-genie-md bg-genie-muted p-4 text-sm leading-[1.4]">
+        <span className="font-medium text-genie-text">Your connection: {status.clientIp ?? 'not detected'}</span>
+        {status.configured &&
+          (myIpListed ? <StatusPill tone="success">Office network</StatusPill> : <StatusPill tone="warning">Not an office IP</StatusPill>)}
+        {status.clientIp && !myIpListed && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => add(status.clientIp!, 'Added from Group cells')}
+            className="text-genie-primary underline-offset-2 hover:underline"
+          >
+            Add this IP as an office IP
+          </button>
+        )}
+        {!status.clientIp && (
+          <span className="text-xs text-genie-warning-fg">
+            The database could not detect your IP, so the restriction would block operators. Do not switch it on yet.
+          </span>
+        )}
+      </div>
+      {status.ipHeaders && (
+        <details className="text-xs text-genie-text-secondary">
+          <summary className="cursor-pointer">How the database sees your connection</summary>
+          <pre className="mt-2 overflow-auto rounded-genie-md border border-genie-border bg-genie-surface p-3">
+            {JSON.stringify(status.ipHeaders, null, 2)}
+          </pre>
+        </details>
+      )}
+      {ips.length > 0 && (
+        <table className="w-full text-left leading-[1.4]">
+          <thead>
+            <tr className="text-sm font-medium text-genie-text-secondary">
+              <th className="py-2 pr-4 font-medium">IP / range</th>
+              <th className="py-2 pr-4 font-medium">Label</th>
+              <th className="py-2 font-medium" />
+            </tr>
+          </thead>
+          <tbody>
+            {ips.map((row) => (
+              <tr key={row.ip_range} className="border-t border-genie-border text-genie-text">
+                <td className="py-2 pr-4 text-sm font-medium">{row.ip_range}</td>
+                <td className="py-2 pr-4 text-sm">{row.label ?? ''}</td>
+                <td className="py-2 text-right">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => remove(row.ip_range)}
+                    className="text-sm text-genie-danger-fg underline-offset-2 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="flex max-w-xs basis-56 flex-col gap-1">
+          <span className="genie-label">Office IP or range</span>
+          <input value={ipInput} onChange={(e) => setIpInput(e.target.value)} placeholder="203.0.113.10" className="genie-field" />
+        </label>
+        <label className="flex max-w-sm basis-64 flex-col gap-1">
+          <span className="genie-label">Label (optional)</span>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Namakkal plant - main line" className="genie-field" />
+        </label>
+        <button type="button" disabled={busy || !ipInput.trim()} onClick={() => add(ipInput, label)} className="genie-btn-primary">
+          Add office IP
+        </button>
+      </div>
+      {error && <IssueList title="Office network" issues={[{ path: '', message: error }]} tone="error" />}
+    </section>
+  );
+}
+
+export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules, officeNetwork }: CellGroupingProps) {
   const [published, setPublished] = useState<PublishedMap>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [office, setOffice] = useState<OfficeStatus | null>(null);
+
+  const checkOffice = useCallback(async () => {
+    if (officeNetwork) setOffice(await officeNetwork.getStatus());
+  }, [officeNetwork]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
+      await checkOffice();
       setPublished(await loadRules());
     } catch (e) {
       setLoadError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [loadRules]);
+  }, [loadRules, checkOffice]);
 
   /** Background reload (no loading screen); throws so callers can show the error. */
   const reload = useCallback(async () => {
@@ -1046,7 +1258,10 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
   // Pick up rules published from another browser when the user comes back to this tab.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') reload().catch(() => undefined);
+      if (document.visibilityState === 'visible') {
+        checkOffice().catch(() => undefined);
+        reload().catch(() => undefined);
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onVisible);
@@ -1054,7 +1269,7 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onVisible);
     };
-  }, [reload]);
+  }, [reload, checkOffice]);
 
   const onPublish = async (chemistry: string, fileName: string, text: string) => {
     const row = await publishRules(chemistry, fileName, text);
@@ -1076,7 +1291,11 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
         />
       )}
 
-      {!loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />}
+      {!loading && !loadError && canProcessReports && office && !office.isAdmin && !office.fromOffice ? (
+        <OfficeOnlyNotice status={office} onRetry={refresh} />
+      ) : (
+        !loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />
+      )}
 
       {!loading && !loadError && canManageRules && (
         <section className="genie-card">
@@ -1100,6 +1319,9 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
             ))}
           </div>
         </section>
+      )}
+      {!loading && !loadError && canManageRules && officeNetwork && office && (
+        <OfficeNetworkCard api={officeNetwork} status={office} onChanged={() => checkOffice().catch(() => undefined)} />
       )}
     </div>
   );

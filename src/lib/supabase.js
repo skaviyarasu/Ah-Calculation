@@ -320,20 +320,8 @@ export const db = {
 }
 
 // Authentication helper functions
+// There is no self sign-up: accounts are created by administrators (see adminUsers below).
 export const auth = {
-  async signUp(email, password, userData) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: userData
-      }
-    })
-    
-    if (error) throw error
-    return data
-  },
-
   async signIn(email, password) {
     // Log the URL being used for login (for debugging)
     console.log('🔐 Attempting login with Supabase URL:', supabaseUrl)
@@ -2098,6 +2086,45 @@ export const cellGrouping = {
     return latest
   },
 
+  /**
+   * Office-network status for Group cells (database/20_cell_grouping_office_network.sql):
+   * { configured, fromOffice, isAdmin, clientIp }. Returns null when the migration is not installed.
+   */
+  async getOfficeStatus() {
+    const { data, error } = await supabase.rpc('cell_grouping_office_status')
+    if (error) {
+      console.warn('Office status unavailable:', error.message)
+      return null
+    }
+    return {
+      configured: Boolean(data?.configured),
+      fromOffice: Boolean(data?.from_office),
+      isAdmin: Boolean(data?.is_admin),
+      clientIp: data?.client_ip ?? null,
+      ipHeaders: data?.ip_headers ?? null
+    }
+  },
+
+  /** Allowed office IPs / ranges (admins only). */
+  async listOfficeIps() {
+    const { data, error } = await supabase
+      .from('cell_grouping_office_ips')
+      .select('ip_range, label, created_at')
+      .order('created_at', { ascending: true })
+    if (error) throw error
+    return data || []
+  },
+
+  async addOfficeIp(ipRange, label) {
+    const { error } = await supabase.from('cell_grouping_office_ips').insert({ ip_range: ipRange, label: label || null })
+    if (error) throw error
+  },
+
+  async removeOfficeIp(ipRange) {
+    const { error } = await supabase.from('cell_grouping_office_ips').delete().eq('ip_range', ipRange)
+    if (error) throw error
+  },
+
   /** Publishes a new version of the rules for one chemistry (admin only; enforced by RLS). */
   async publishRules(chemistry, fileName, yamlText) {
     const user = await auth.getCurrentUser()
@@ -2114,6 +2141,31 @@ export const cellGrouping = {
       .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
       .single()
     if (error) throw error
+    return data
+  }
+}
+
+// User accounts are created by administrators only (public sign-up is switched off).
+// Calls the Edge Function supabase/functions/admin-create-user, which checks the caller is an admin.
+export const adminUsers = {
+  async create({ email, password, fullName, roles = [] }) {
+    const { data, error } = await supabase.functions.invoke('admin-create-user', {
+      body: { email, password, fullName, roles }
+    })
+    if (error) {
+      // The function's own message (e.g. "Only administrators…") is in the response body.
+      let message = error.message
+      try {
+        const body = await error.context?.json?.()
+        if (body?.error) message = body.error
+      } catch {
+        // not JSON
+      }
+      if (error.name === 'FunctionsFetchError' || /not found|404/i.test(message)) {
+        message = 'The admin-create-user function is not deployed yet. See supabase/functions/admin-create-user/README.md, or add the user in Supabase → Authentication → Add user.'
+      }
+      throw new Error(message)
+    }
     return data
   }
 }
