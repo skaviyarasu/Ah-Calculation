@@ -8,6 +8,29 @@ export default {
     theme: {
         extend: {
             colors: {
+                genie: {
+                    brand: 'var(--genie-bg-brand)',
+                    app: 'var(--genie-bg-app)',
+                    surface: 'var(--genie-bg-surface)',
+                    muted: 'var(--genie-bg-muted)',
+                    primary: 'var(--genie-action-primary)',
+                    'primary-pressed': 'var(--genie-action-primary-pressed)',
+                    danger: 'var(--genie-action-danger)',
+                    accent: 'var(--genie-brand-accent)',
+                    text: 'var(--genie-text-primary)',
+                    'text-secondary': 'var(--genie-text-secondary)',
+                    border: 'var(--genie-border-default)',
+                    'border-strong': 'var(--genie-border-strong)',
+                    'success-fg': 'var(--genie-success-fg)',
+                    'success-bg': 'var(--genie-success-bg)',
+                    'success-border': 'var(--genie-success-border)',
+                    'warning-fg': 'var(--genie-warning-fg)',
+                    'warning-border': 'var(--genie-warning-border)',
+                    'danger-fg': 'var(--genie-danger-fg)',
+                    'info-fg': 'var(--genie-info-fg)',
+                    'info-bg': 'var(--genie-info-bg)',
+                    'info-border': 'var(--genie-info-border)',
+                },
                 background: 'var(--background)',
                 foreground: 'var(--foreground)',
                 muted: {
@@ -46,6 +69,8 @@ export default {
                 xs: '2px'
             },
             borderRadius: {
+                'genie-md': '10px',
+                'genie-lg': '16px',
                 xl: '1.25rem',
                 '2xl': '1.75rem'
             },

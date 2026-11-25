@@ -2,6 +2,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import MainApp from './MainApp.jsx';
 import LoginGate from './LoginGate.jsx';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
 import './index.css';
 
 // Error boundary fallback

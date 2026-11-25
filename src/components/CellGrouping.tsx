@@ -36,6 +36,10 @@ import type {
   Workbook,
 } from '../lib/cellGrouping/index.ts';
 
+import iconChevronDown from '../assets/genie/icon-chevron-down.svg';
+import statusDotInfo from '../assets/genie/status-dot-info.svg';
+import statusDotSuccess from '../assets/genie/status-dot-success.svg';
+
 const PREVIEW_ROWS = 200;
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -88,9 +92,10 @@ function downloadBytes(bytes: Uint8Array | string, filename: string, type = XLSX
 
 function IssueList({ title, issues, tone }: { title: string; issues: { path: string; message: string }[]; tone: 'error' | 'warn' }) {
   if (!issues.length) return null;
-  const color = tone === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800';
+  const color =
+    tone === 'error' ? 'border-[rgba(211,47,47,0.4)] bg-[#fdecec] text-genie-danger-fg' : 'border-genie-warning-border bg-[#fff6e5] text-genie-warning-fg';
   return (
-    <div className={`rounded-xl border px-4 py-3 text-sm ${color}`}>
+    <div className={`rounded-genie-md border px-4 py-3 text-sm leading-[1.4] ${color}`}>
       <p className="font-medium">{title}</p>
       <ul className="mt-1 space-y-0.5">
         {issues.map((i, n) => (
@@ -104,16 +109,81 @@ function IssueList({ title, issues, tone }: { title: string; issues: { path: str
   );
 }
 
+type PillTone = 'success' | 'info' | 'warning' | 'danger';
+const PILL_STYLE: Record<PillTone, string> = {
+  success: 'border-genie-success-border bg-genie-success-bg text-genie-success-fg',
+  info: 'border-genie-info-border bg-genie-info-bg text-genie-info-fg',
+  warning: 'border-genie-warning-border bg-[#fff6e5] text-genie-warning-fg',
+  danger: 'border-genie-danger bg-[#fdecec] text-genie-danger-fg',
+};
+const PILL_DOT: Record<PillTone, React.ReactNode> = {
+  success: <img src={statusDotSuccess} alt="" width={10} height={10} className="h-[10px] w-[10px] shrink-0" />,
+  info: <img src={statusDotInfo} alt="" width={10} height={10} className="h-[10px] w-[10px] shrink-0" />,
+  warning: <span className="h-[10px] w-[10px] shrink-0 rounded-full bg-genie-warning-fg" aria-hidden="true" />,
+  danger: <span className="h-[10px] w-[10px] shrink-0 rounded-full bg-genie-danger-fg" aria-hidden="true" />,
+};
+
+/** Genie status pill (dot + text). */
+function StatusPill({ tone, children }: { tone: PillTone; children: React.ReactNode }) {
+  return (
+    <span className={`genie-pill ${PILL_STYLE[tone]}`}>
+      {PILL_DOT[tone]}
+      {children}
+    </span>
+  );
+}
+
+/** Genie KPI tile: label, big value, caption. */
+function Kpi({ label, value, caption }: { label: string; value: React.ReactNode; caption?: React.ReactNode }) {
+  return (
+    <div className="genie-kpi">
+      <p className="text-sm font-medium text-genie-text-secondary">{label}</p>
+      <p className="truncate text-[28px] font-semibold text-genie-text">{value}</p>
+      <p className="min-h-[17px] text-xs text-genie-text-secondary">{caption ?? ''}</p>
+    </div>
+  );
+}
+
+/** Genie select field (label above, chevron icon). */
+function SelectField({
+  label,
+  value,
+  onChange,
+  children,
+  className = '',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`flex min-w-0 flex-1 flex-col gap-1 ${className}`}>
+      <span className="genie-label">{label}</span>
+      <span className="relative block">
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="genie-field appearance-none pr-10">
+          {children}
+        </select>
+        <img src={iconChevronDown} alt="" width={16} height={16} className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+      </span>
+    </label>
+  );
+}
+
 function RowsTable({ result, rows }: { result: GroupingResult; rows: number[] }) {
   const { frame } = result;
   const shown = rows.slice(0, PREVIEW_ROWS);
   return (
-    <div className="overflow-auto rounded-xl border border-white/40 bg-white/70">
-      <table className="min-w-full text-left text-xs">
-        <thead className="sticky top-0 bg-white/90">
+    <div className="overflow-auto rounded-genie-md border border-genie-border bg-genie-surface">
+      <table className="min-w-full text-left text-sm leading-[1.4]">
+        <thead className="sticky top-0 bg-genie-surface">
           <tr>
             {frame.columns.map((c) => (
-              <th key={c} className={`whitespace-nowrap px-3 py-2 font-semibold ${c === result.groupCol ? 'text-accent' : 'text-muted-foreground'}`}>
+              <th
+                key={c}
+                className={`whitespace-nowrap px-3 py-2 font-medium ${c === result.groupCol ? 'text-genie-primary' : 'text-genie-text-secondary'}`}
+              >
                 {c}
               </th>
             ))}
@@ -121,9 +191,9 @@ function RowsTable({ result, rows }: { result: GroupingResult; rows: number[] })
         </thead>
         <tbody>
           {shown.map((r) => (
-            <tr key={r} className="border-t border-slate-100">
+            <tr key={r} className="border-t border-genie-border">
               {frame.columns.map((c) => (
-                <td key={c} className="whitespace-nowrap px-3 py-1.5">
+                <td key={c} className={`whitespace-nowrap px-3 py-1.5 ${c === result.groupCol ? 'font-medium' : ''}`}>
                   {formatCell(frame.data[c][r])}
                 </td>
               ))}
@@ -132,8 +202,8 @@ function RowsTable({ result, rows }: { result: GroupingResult; rows: number[] })
         </tbody>
       </table>
       {rows.length > shown.length && (
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Showing {shown.length} of {rows.length} cells. Export to see all.
+        <p className="px-3 py-2 text-xs text-genie-text-secondary">
+          Showing {shown.length} of {rows.length} cells. Download to see all.
         </p>
       )}
     </div>
@@ -141,10 +211,7 @@ function RowsTable({ result, rows }: { result: GroupingResult; rows: number[] })
 }
 
 const dropZone =
-  'flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 px-4 py-5 text-center text-sm text-muted-foreground hover:border-accent/50';
-const primaryButton =
-  'rounded-full bg-accent px-5 py-2 text-sm font-medium text-accent-foreground shadow-layer-sm disabled:cursor-not-allowed disabled:opacity-40';
-const secondaryButton = 'rounded-full border border-white/40 bg-white/70 px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40';
+  'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-genie-md border border-dashed border-genie-border-strong bg-genie-muted px-4 py-6 text-center text-sm leading-[1.4] text-genie-text-secondary transition-colors hover:border-genie-primary';
 
 function FilePicker({
   label,
@@ -152,6 +219,7 @@ function FilePicker({
   onFile,
   onFiles,
   multiple = false,
+  className = dropZone,
 }: {
   label: React.ReactNode;
   accept: string;
@@ -159,9 +227,10 @@ function FilePicker({
   /** Receives every selected file (use with `multiple`). */
   onFiles?: (fs: File[]) => void;
   multiple?: boolean;
+  className?: string;
 }) {
   return (
-    <label className={dropZone}>
+    <label className={className}>
       {label}
       <input
         type="file"
@@ -176,6 +245,78 @@ function FilePicker({
         }}
       />
     </label>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Plain-language rule conditions (admin "Rule details", Figma UI-GRD-002 Admin)
+// ---------------------------------------------------------------------------
+
+const OP_SYMBOL: Record<string, string> = { '>=': '≥', '<=': '≤', '!=': '≠', '==': '=', '>': '>', '<': '<' };
+const showValue = (x: unknown) => String(x instanceof PyFloat ? x.value : x);
+
+function conditionText(
+  c: RuleSet['steps'][number]['filter'] extends infer F ? (F extends { conditions: Array<infer C> } ? C : never) : never,
+): string {
+  const col = c.col ?? 'row';
+  if (c.regex !== undefined) return `${col} matches /${c.regex}/`;
+  if (c.between) return `${showValue(c.between[0])} ≤ ${col} ≤ ${showValue(c.between[1])}`;
+  if (c.values) return `${col} ${c.op === 'in' ? 'in' : c.op} [${c.values.map(showValue).join(', ')}]`;
+  return `${col} ${OP_SYMBOL[c.op] ?? c.op} ${showValue(c.value)}`;
+}
+
+function stepText(step: RuleSet['steps'][number]): string {
+  if (!step.filter) return 'Every cell not matched by an earlier group';
+  const joiner = step.filter.mode === 'any' ? ' OR ' : ' AND ';
+  return step.filter.conditions.map(conditionText).join(joiner) + (step.action === 'drop' ? '  → rejected' : '');
+}
+
+function ruleColumns(rules: RuleSet): string[] {
+  const cols: string[] = [];
+  for (const step of rules.steps) for (const c of step.filter?.conditions ?? []) if (c.col && !cols.includes(c.col)) cols.push(c.col);
+  return cols;
+}
+
+function RuleDetails({ rules }: { rules: RuleSet }) {
+  const [all, setAll] = useState(false);
+  const LIMIT = 5;
+  const shown = all ? rules.steps : rules.steps.slice(0, LIMIT);
+  return (
+    <section className="genie-card">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="genie-card-title">Rule details</h3>
+        <StatusPill tone="info">Admin access</StatusPill>
+      </div>
+      <p className="text-sm font-medium leading-[1.4] text-genie-text">Columns used: {ruleColumns(rules).join(', ') || '—'}</p>
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-left leading-[1.4]">
+          <thead>
+            <tr className="text-sm font-medium text-genie-text-secondary">
+              <th className="w-24 py-2 pr-4 font-medium">Group</th>
+              <th className="py-2 font-medium">Condition</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((step, k) => (
+              <tr key={k} className="border-t border-genie-border text-genie-text">
+                <td className="py-2 pr-4 align-top text-sm font-medium">{String(step.name)}</td>
+                <td className="py-2 text-base">{stepText(step)}</td>
+              </tr>
+            ))}
+            {rules.steps.length > LIMIT && (
+              <tr className="border-t border-genie-border text-genie-text">
+                <td className="py-2 pr-4 text-sm font-medium">…</td>
+                <td className="py-2 text-base">
+                  <button type="button" onClick={() => setAll((v) => !v)} className="text-genie-primary underline-offset-2 hover:underline">
+                    {all ? 'Show fewer groups' : `${rules.steps.length - LIMIT} more groups`}
+                  </button>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -229,45 +370,51 @@ function RulesCard({
   };
 
   return (
-    <div className="space-y-3 rounded-xl border border-white/40 bg-white/60 p-4">
+    <div className="flex flex-col gap-3 rounded-genie-md border border-genie-border bg-genie-surface p-4 leading-[1.4]">
       <div>
-        <p className="text-lg font-semibold">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <p className="text-base font-semibold text-genie-text">{label}</p>
+        <p className="text-xs text-genie-text-secondary">{description}</p>
       </div>
 
       {published ? (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-          <p className="font-medium">Live: {published.file_name}</p>
+        <div className="flex flex-col gap-1 rounded-genie-md bg-genie-muted p-3 text-xs text-genie-text-secondary">
+          <div>
+            <StatusPill tone="success">Live: {published.file_name}</StatusPill>
+          </div>
           {publishedRules && <p>{summarizeRules(publishedRules)}</p>}
           <p>
             Published {formatDate(published.uploaded_at)}
             {published.uploaded_by_email && ` by ${published.uploaded_by_email}`}
           </p>
-          <button type="button" onClick={() => setShowText((v) => !v)} className="mt-1 text-accent hover:underline">
+          <button type="button" onClick={() => setShowText((v) => !v)} className="self-start text-genie-primary underline-offset-2 hover:underline">
             {showText ? 'Hide rules' : 'View rules'}
           </button>
         </div>
       ) : (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">No rules published yet. Operators cannot process {label} reports.</p>
+        <div>
+          <StatusPill tone="warning">No rules published yet. Operators cannot process {label} reports.</StatusPill>
+        </div>
       )}
-      {showText && published && <pre className="max-h-64 overflow-auto rounded-lg bg-white/80 p-3 text-xs">{published.yaml_text}</pre>}
+      {showText && published && (
+        <pre className="max-h-64 overflow-auto rounded-genie-md border border-genie-border bg-genie-surface p-3 text-xs">{published.yaml_text}</pre>
+      )}
 
       <FilePicker
         accept=".yaml,.yml"
         onFile={onFile}
-        label={draft ? <span className="font-medium text-foreground">{draft.fileName}</span> : `Upload new ${label} rules (.yaml)`}
+        label={draft ? <span className="font-medium text-genie-text">{draft.fileName}</span> : `Upload new ${label} rules (.yaml)`}
       />
 
       {draft && (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <IssueList title="These rules are invalid and cannot be published" issues={draft.parsed.errors} tone="error" />
           <IssueList title="Warnings" issues={draft.parsed.warnings} tone="warn" />
-          {draft.parsed.rules && <p className="text-xs text-emerald-700">Valid · {summarizeRules(draft.parsed.rules)}</p>}
-          <div className="flex gap-2">
-            <button type="button" onClick={publish} disabled={!draft.parsed.rules || busy} className={primaryButton}>
+          {draft.parsed.rules && <p className="text-xs text-genie-success-fg">Valid · {summarizeRules(draft.parsed.rules)}</p>}
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={publish} disabled={!draft.parsed.rules || busy} className="genie-btn-primary">
               {busy ? 'Publishing…' : `Publish for ${label}`}
             </button>
-            <button type="button" onClick={() => setDraft(null)} disabled={busy} className={secondaryButton}>
+            <button type="button" onClick={() => setDraft(null)} disabled={busy} className="genie-btn-secondary">
               Cancel
             </button>
           </div>
@@ -323,6 +470,10 @@ function ReportProcessor({
   const parsed = useMemo(() => (rules ? parseRules(rules.yaml_text) : null), [rules]);
   const groups: GroupSummary[] = useMemo(() => (result ? summarizeGroups(result) : []), [result]);
   const chem = CHEMISTRIES.find((c) => c.id === chemistry);
+  /** Chemistries that accept per-cell reports, e.g. "LFP". */
+  const perCellLabel = CHEMISTRIES.filter((c) => c.perCellReports)
+    .map((c) => c.label)
+    .join(' / ');
 
   const clearResult = () => {
     setResult(null);
@@ -342,6 +493,11 @@ function ReportProcessor({
       setFileBytes(null);
       setSheetName('');
       setDataName(files.length === 1 ? files[0].name : `${files.length} per-cell reports`);
+      if (chem && !chem.perCellReports) {
+        setError(
+          `${chem.label} takes one grading-machine export. Per-cell reports are only processed as ${perCellLabel}: select ${perCellLabel} in step 1.`,
+        );
+      }
       return;
     }
     setPerCell(null);
@@ -445,7 +601,12 @@ function ReportProcessor({
   };
 
   const reloadButton = (
-    <button type="button" onClick={reloadRules} disabled={reloading || busy} className="text-xs text-accent hover:underline disabled:opacity-50">
+    <button
+      type="button"
+      onClick={reloadRules}
+      disabled={reloading || busy}
+      className="text-sm text-genie-primary underline-offset-2 hover:underline disabled:opacity-50"
+    >
       {reloading ? 'Reloading…' : 'Reload rules'}
     </button>
   );
@@ -478,12 +639,12 @@ function ReportProcessor({
 
   if (!available.length) {
     return (
-      <section className="glass-panel p-5">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Process grading report</h3>
+      <section className="genie-card">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="genie-card-title">1 · Select grouping rules</h3>
           {reloadButton}
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="text-sm leading-[1.4] text-genie-text-secondary">
           No grouping rules have been published yet. Ask an administrator to publish the LFP / NMC rules, then click Reload rules.
         </p>
         {error && <IssueList title="Error" issues={[{ path: '', message: error }]} tone="error" />}
@@ -502,135 +663,183 @@ function ReportProcessor({
     : [];
   const excluded = result ? result.frame.length - result.outputRows.length : 0;
 
+  // "Unassigned" = cells labelled by a catch-all step (no filter) or by no step at all.
+  const catchAll = new Set((result?.rules.steps ?? []).filter((st) => st.filter === null).map((st) => String(st.name)));
+  const isUnassigned = (g: GroupSummary) => g.label === null || (g.steps.length > 0 && g.steps.every((st) => catchAll.has(String(st))));
+  const unassignedCount = kept.filter(isUnassigned).reduce((n, g) => n + g.rows.length, 0);
+  const assigned = kept.filter((g) => !isUnassigned(g)).sort((a, b) => b.rows.length - a.rows.length);
+  const tableRows = result
+    ? [
+        ...assigned.map((g) => ({ label: labelText(g.label), count: g.rows.length, tone: 'normal' as const })),
+        ...kept.filter(isUnassigned).map((g) => ({ label: labelText(g.label), count: g.rows.length, tone: 'unassigned' as const })),
+        ...(result.rejectedRows.length ? [{ label: 'Rejected', count: result.rejectedRows.length, tone: 'rejected' as const }] : []),
+      ]
+    : [];
+  const total = result?.frame.length || 1;
+  const fileCaption = perCell
+    ? `${perCell.length} per-cell report${perCell.length === 1 ? '' : 's'}`
+    : workbook && workbook.sheetNames.length > 1
+      ? `Excel workbook · ${workbook.sheetNames.length} sheets`
+      : '';
+  const rulesUsed = resultInfo
+    ? advanced
+      ? `${resultInfo.chemistry} / ${resultInfo.rules.file_name} / published ${formatDate(resultInfo.rules.uploaded_at)}`
+      : resultInfo.chemistry
+    : '';
+
   return (
     <>
-      <section className="glass-panel space-y-4 p-5">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">Process grading report</h3>
+      {/* 1 · Select grouping rules */}
+      <section className="genie-card">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="genie-card-title">1 · Select grouping rules</h3>
           {reloadButton}
         </div>
-
-        <div>
-          <p className="mb-2 text-sm">1. Select the cell chemistry</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {CHEMISTRIES.map((c) => {
-              const p = published[c.id];
-              const selected = c.id === chemistry;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={!p}
-                  aria-pressed={selected}
-                  onClick={() => {
-                    setChemistry(c.id);
-                    clearResult();
-                    setError('');
-                  }}
-                  className={`rounded-xl border px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    selected ? 'border-accent bg-accent/10 ring-2 ring-accent/40' : 'border-white/40 bg-white/70 hover:border-accent/50'
-                  }`}
-                >
-                  <p className="text-lg font-semibold">{c.label}</p>
-                  <p className="text-xs text-muted-foreground">{c.description}</p>
-                  {(advanced || !p) && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {p ? `Rules: ${p.file_name} · ${formatDate(p.uploaded_at)}` : 'Not available yet'}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {parsed && parsed.errors.length > 0 && (
-            <div className="mt-2">
-              <IssueList
-                title={`The published ${chem?.label} rules are invalid. Ask an administrator to publish a corrected file.`}
-                issues={parsed.errors}
-                tone="error"
-              />
-            </div>
-          )}
+        <div className="flex flex-wrap gap-4">
+          <SelectField
+            label="Choose cell chemistry"
+            value={chemistry}
+            onChange={(v) => {
+              setChemistry(v);
+              clearResult();
+              setError('');
+            }}
+            className="max-w-[calc(50%-8px)] basis-64"
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {CHEMISTRIES.map((c) => (
+              <option key={c.id} value={c.id} disabled={!published[c.id]}>
+                {c.label} · {c.description}
+                {published[c.id] ? '' : ' (not available yet)'}
+              </option>
+            ))}
+          </SelectField>
         </div>
+        {advanced && parsed?.rules && rules && (
+          <div className="flex flex-wrap gap-4">
+            <Kpi
+              label="Groups defined"
+              value={parsed.rules.steps.length}
+              caption={parsed.rules.steps
+                .map((st) => String(st.name))
+                .slice(0, 8)
+                .join(', ')
+                .concat(parsed.rules.steps.length > 8 ? ', …' : '')}
+            />
+            <Kpi label="Saved" value={new Date(rules.uploaded_at).toISOString().slice(0, 10)} caption={rules.file_name} />
+          </div>
+        )}
+        {parsed && parsed.errors.length > 0 && (
+          <IssueList
+            title={`The published ${chem?.label} rules are invalid. Ask an administrator to publish a corrected file.`}
+            issues={parsed.errors}
+            tone="error"
+          />
+        )}
+      </section>
 
-        <div className="space-y-3">
-          <p className="text-sm">2. Upload the raw grading-machine export{chem?.perCellReports ? ', or all per-cell reports of the batch' : ''}</p>
+      {advanced && parsed?.rules && <RuleDetails rules={parsed.rules} />}
+
+      {/* 2 · Upload grading file */}
+      <section className="genie-card">
+        <h3 className="genie-card-title">2 · Upload grading file</h3>
+        {/* Several files can always be selected, whatever is chosen in step 1; Assign groups checks the combination. */}
+        {dataName ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-genie-md bg-genie-muted p-4 leading-[1.4]">
+            <p className="text-sm font-medium text-genie-text">{dataName}</p>
+            {fileCaption && <p className="text-xs text-genie-text-secondary">{fileCaption}</p>}
+            {result && (
+              <p className="text-xs text-genie-text-secondary">
+                {result.frame.length} cells · {result.frame.columns.length} columns
+              </p>
+            )}
+            <span className="h-2 min-w-px flex-1" aria-hidden="true" />
+            {result &&
+              (missing.length === 0 ? (
+                <StatusPill tone="success">All rule columns found</StatusPill>
+              ) : (
+                <StatusPill tone="warning">
+                  {missing.length} rule column{missing.length === 1 ? '' : 's'} missing
+                </StatusPill>
+              ))}
+            <FilePicker
+              accept={advanced || !chem || chem.perCellReports ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
+              multiple
+              onFiles={onDataFiles}
+              className="cursor-pointer text-sm text-genie-primary underline-offset-2 hover:underline"
+              label="Replace"
+            />
+          </div>
+        ) : (
           <FilePicker
-            accept={advanced || chem?.perCellReports ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
-            multiple={Boolean(chem?.perCellReports)}
+            accept={advanced || !chem || chem.perCellReports ? '.xlsx,.xls,.csv' : '.xlsx,.xls'}
+            multiple
             onFiles={onDataFiles}
             label={
-              dataName ? (
-                <>
-                  <span className="font-medium text-foreground">{dataName}</span>
-                  <span className="mt-1 text-xs">click to replace</span>
-                </>
-              ) : chem?.perCellReports ? (
-                `Choose all ${chem.label} per-cell reports at once (.xls / .xlsx / .csv), or one machine export`
-              ) : advanced ? (
-                'Choose the raw grading-machine export (.xlsx / .xls; .csv for testing)'
-              ) : (
-                'Choose the raw grading-machine export (.xlsx / .xls)'
-              )
+              <>
+                <span className="text-base font-medium text-genie-text">
+                  {!chem || chem.perCellReports ? 'Choose the grading file(s)' : 'Choose the raw grading-machine export'}
+                </span>
+                <span className="text-xs">
+                  {!chem || chem.perCellReports
+                    ? `One machine export (.xlsx / .xls), or all ${chem?.label ?? perCellLabel} per-cell reports at once (Ctrl+A / Shift+click)`
+                    : advanced
+                      ? '.xlsx / .xls (.csv for testing)'
+                      : '.xlsx / .xls'}
+                </span>
+              </>
             }
           />
-          {advanced && (
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              {workbook && workbook.sheetNames.length > 1 && (
-                <label>
-                  Sheet
-                  <select
-                    value={sheetName}
-                    onChange={(e) => {
-                      setSheetName(e.target.value);
-                      clearResult();
-                    }}
-                    className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-1"
-                  >
-                    <option value="">Auto-detect</option>
-                    {workbook.sheetNames.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label>
-                Group column
-                <input
-                  value={groupCol}
-                  onChange={(e) => {
-                    setGroupCol(e.target.value);
-                    clearResult();
-                  }}
-                  className="ml-2 w-40 rounded-lg border border-slate-200 bg-white px-2 py-1"
-                />
-              </label>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <button onClick={run} disabled={!canRun} className={primaryButton}>
-            {busy ? 'Processing…' : `3. Process ${chem?.label ?? ''} data`}
-          </button>
-          <button onClick={exportExcel} disabled={!result} className={secondaryButton}>
-            Export Excel
-          </button>
-          <button onClick={exportCsv} disabled={!result} title="Same content as the CSV written by categorize_csv.py" className={secondaryButton}>
-            Export CSV
-          </button>
-        </div>
-        {!canRun && (
-          <p className="text-xs text-muted-foreground">
-            {!chemistry && !workbook && !perCell
-              ? 'Select LFP or NMC and upload the raw grading-machine export.'
-              : !chemistry
-                ? 'Select LFP or NMC.'
-                : !workbook && !perCell
-                  ? 'Upload the raw grading-machine export.'
-                  : ''}
-          </p>
         )}
+        {advanced && (
+          <div className="flex flex-wrap items-end gap-4">
+            {workbook && workbook.sheetNames.length > 1 && (
+              <SelectField
+                label="Sheet"
+                value={sheetName}
+                onChange={(v) => {
+                  setSheetName(v);
+                  clearResult();
+                }}
+                className="max-w-xs basis-48"
+              >
+                <option value="">Auto-detect</option>
+                {workbook.sheetNames.map((sh) => (
+                  <option key={sh}>{sh}</option>
+                ))}
+              </SelectField>
+            )}
+            <label className="flex max-w-xs basis-48 flex-col gap-1">
+              <span className="genie-label">Group column</span>
+              <input
+                value={groupCol}
+                onChange={(e) => {
+                  setGroupCol(e.target.value);
+                  clearResult();
+                }}
+                className="genie-field"
+              />
+            </label>
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <button onClick={run} disabled={!canRun} className="genie-btn-primary">
+            {busy ? 'Assigning…' : 'Assign groups'}
+          </button>
+          <p className="text-xs leading-[1.4] text-genie-text-secondary">
+            {!canRun && !busy
+              ? !chemistry && !workbook && !perCell
+                ? 'Select LFP or NMC and upload the grading file.'
+                : !chemistry
+                  ? 'Select LFP or NMC.'
+                  : !workbook && !perCell
+                    ? 'Upload the grading file.'
+                    : ''
+              : `Group column: ${groupCol.trim() || DEFAULT_GROUP_COL}`}
+          </p>
+        </div>
         {error && <IssueList title="Processing failed" issues={[{ path: '', message: error }]} tone="error" />}
       </section>
 
@@ -649,48 +858,52 @@ function ReportProcessor({
         />
       )}
 
+      {/* 3 · Result */}
       {result && resultInfo && (
-        <section className="glass-panel space-y-4 p-5">
-          <p className="text-sm text-muted-foreground">
-            {dataName} · {resultInfo.chemistry}
-            {advanced && ` · rules ${resultInfo.rules.file_name} (published ${formatDate(resultInfo.rules.uploaded_at)})`}
-          </p>
+        <section className="genie-card">
+          <h3 className="genie-card-title">3 · Result</h3>
+          <p className="text-xs leading-[1.4] text-genie-text-secondary">Rules used: {rulesUsed}</p>
+
           {resultInfo.conversion && (
-            <div className="space-y-3 rounded-xl border border-white/40 bg-white/60 p-4">
+            <div className="flex flex-col gap-3 rounded-genie-md bg-genie-muted p-4 leading-[1.4]">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm">
+                <p className="text-sm text-genie-text">
                   <span className="font-medium">Per-cell reports:</span> {resultInfo.conversion.batch.reports.length} read ·{' '}
-                  <span className="text-emerald-700">{resultInfo.conversion.batch.converted} converted</span> ·{' '}
-                  <span className={resultInfo.conversion.batch.failed ? 'text-red-700' : ''}>{resultInfo.conversion.batch.failed} not converted</span>
+                  <span className="text-genie-success-fg">{resultInfo.conversion.batch.converted} converted</span> ·{' '}
+                  <span className={resultInfo.conversion.batch.failed ? 'text-genie-danger-fg' : ''}>
+                    {resultInfo.conversion.batch.failed} not converted
+                  </span>
                 </p>
-                <div className="flex gap-3 text-xs">
-                  <button type="button" onClick={exportBatchXlsx} className="text-accent hover:underline">
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <button type="button" onClick={exportBatchXlsx} className="text-genie-primary underline-offset-2 hover:underline">
                     Download batch (.xlsx, machine layout)
                   </button>
-                  <button type="button" onClick={exportBatchCsv} className="text-accent hover:underline">
+                  <button type="button" onClick={exportBatchCsv} className="text-genie-primary underline-offset-2 hover:underline">
                     Download batch (.csv)
                   </button>
                 </div>
               </div>
               {resultInfo.conversion.batch.failed > 0 && (
                 <div className="overflow-auto">
-                  <p className="mb-1 text-xs text-muted-foreground">Not converted (these cells have empty values and are grouped as unmatched):</p>
-                  <table className="min-w-full text-left text-xs">
+                  <p className="mb-1 text-xs text-genie-text-secondary">
+                    Not converted (these cells have empty values and are grouped as unmatched):
+                  </p>
+                  <table className="min-w-full text-left text-sm">
                     <thead>
-                      <tr className="text-muted-foreground">
-                        <th className="px-2 py-1">cell No.</th>
-                        <th className="px-2 py-1">File</th>
-                        <th className="px-2 py-1">Reason</th>
+                      <tr className="text-genie-text-secondary">
+                        <th className="py-1 pr-4 font-medium">cell No.</th>
+                        <th className="py-1 pr-4 font-medium">File</th>
+                        <th className="py-1 font-medium">Reason</th>
                       </tr>
                     </thead>
                     <tbody>
                       {resultInfo.conversion.batch.reports
                         .filter((r) => r.error !== null)
                         .map((r) => (
-                          <tr key={r.cellNo} className="border-t border-slate-100">
-                            <td className="px-2 py-1">{r.cellNo}</td>
-                            <td className="px-2 py-1">{r.fileName}</td>
-                            <td className="px-2 py-1 text-red-700">{r.error}</td>
+                          <tr key={r.cellNo} className="border-t border-genie-border">
+                            <td className="py-1 pr-4">{r.cellNo}</td>
+                            <td className="py-1 pr-4">{r.fileName}</td>
+                            <td className="py-1 text-genie-danger-fg">{r.error}</td>
                           </tr>
                         ))}
                     </tbody>
@@ -700,7 +913,7 @@ function ReportProcessor({
             </div>
           )}
           {resultInfo.preprocessed && (
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 text-xs leading-[1.4] text-genie-text-secondary">
               <span>
                 {resultInfo.preprocessed.sheetCount > 1 && `Sheet "${resultInfo.preprocessed.sheetName}" used. `}Converted to CSV: first{' '}
                 {resultInfo.preprocessed.pre.skipRows} row(s) removed
@@ -710,45 +923,90 @@ function ReportProcessor({
                 .
               </span>
               {advanced && (
-                <button type="button" onClick={exportPreprocessed} className="text-accent hover:underline">
+                <button type="button" onClick={exportPreprocessed} className="text-genie-primary underline-offset-2 hover:underline">
                   Download preprocessed CSV
                 </button>
               )}
             </div>
           )}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ['Cells', result.frame.length],
-              ['Groups', kept.length],
-              ['Rejected', result.rejectedRows.length],
-              ['Excluded (drop_unmatched)', excluded],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-xl bg-white/70 px-4 py-3">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
-                <p className="text-2xl font-semibold">{value}</p>
-              </div>
-            ))}
+
+          <div className="flex flex-wrap gap-4">
+            <Kpi
+              label="Cells"
+              value={result.frame.length}
+              caption={excluded > 0 ? `${dataName} · ${excluded} excluded by drop_unmatched` : dataName}
+            />
+            <Kpi label="Groups found" value={assigned.length} caption={advanced ? `of ${result.rules.steps.length} defined` : ' '} />
+            <Kpi label="Unassigned" value={unassignedCount} caption="Outside every range – review" />
+            <Kpi label="Rejected" value={result.rejectedRows.length} caption="Removed by a rejection rule – review" />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((t, i) => (
-              <button
-                key={`${t.label}-${i}`}
-                onClick={() => setActiveGroup(i)}
-                className={`rounded-full px-3 py-1.5 text-xs transition ${
-                  activeGroup === i
-                    ? t.rejected
-                      ? 'bg-red-600 text-white'
-                      : 'bg-accent text-accent-foreground'
-                    : 'bg-white/70 text-muted-foreground hover:bg-white'
-                }`}
-              >
-                {t.label} <span className="opacity-70">({t.rows.length})</span>
-              </button>
-            ))}
+          {/* Group table with share-of-file bars */}
+          <div className="w-full overflow-x-auto">
+            <table className="w-full text-left leading-[1.4]">
+              <thead>
+                <tr className="text-sm font-medium text-genie-text-secondary">
+                  <th className="w-[120px] pb-3 pr-4 font-medium">Group</th>
+                  <th className="w-[80px] pb-3 pr-4 font-medium">Cells</th>
+                  <th className="pb-3 font-medium">Share of file</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((row) => (
+                  <tr key={`${row.tone}-${row.label}`} className="border-t border-genie-border">
+                    <td
+                      className={`py-2 pr-4 text-sm font-medium ${
+                        row.tone === 'unassigned' ? 'text-genie-warning-fg' : row.tone === 'rejected' ? 'text-genie-danger-fg' : 'text-genie-text'
+                      }`}
+                    >
+                      {row.label}
+                    </td>
+                    <td className="py-2 pr-4 text-base text-genie-text">{row.count}</td>
+                    <td className="py-2">
+                      <div
+                        className={`h-3 rounded-[3px] ${
+                          row.tone === 'unassigned' ? 'bg-genie-warning-border' : row.tone === 'rejected' ? 'bg-genie-danger' : 'bg-genie-primary'
+                        }`}
+                        style={{ width: `max(4px, ${(row.count / total) * 100}%)` }}
+                        title={`${((row.count / total) * 100).toFixed(1)} %`}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {tabs[activeGroup] && <RowsTable result={result} rows={tabs[activeGroup].rows} />}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={exportCsv} title="Same content as the CSV written by categorize_csv.py" className="genie-btn-secondary">
+              Download grouped CSV
+            </button>
+            <button onClick={exportExcel} className="genie-btn-secondary">
+              Download Excel
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <p className="text-base font-semibold leading-[1.4] text-genie-text">Cells by group</p>
+            <div className="flex flex-wrap gap-2">
+              {tabs.map((t, idx) => (
+                <button
+                  key={`${t.label}-${idx}`}
+                  onClick={() => setActiveGroup(idx)}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    activeGroup === idx
+                      ? t.rejected
+                        ? 'bg-genie-danger text-white'
+                        : 'bg-genie-primary text-white'
+                      : 'bg-genie-muted text-genie-text-secondary hover:text-genie-text'
+                  }`}
+                >
+                  {t.label} <span className="opacity-70">({t.rows.length})</span>
+                </button>
+              ))}
+            </div>
+            {tabs[activeGroup] && <RowsTable result={result} rows={tabs[activeGroup].rows} />}
+          </div>
         </section>
       )}
     </>
@@ -804,22 +1062,12 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
   };
 
   if (!canManageRules && !canProcessReports) {
-    return <p className="text-sm text-muted-foreground">You do not have access to Cell Grouping. Ask an administrator for the Operator role.</p>;
+    return <p className="text-sm text-genie-text-secondary">You do not have access to Cell Grouping. Ask an administrator for the Operator role.</p>;
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Cell Grouping</p>
-        <h2 className="text-fluid-lg font-semibold">Grading report processing</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {canManageRules
-            ? 'Publish the LFP and NMC grouping rules for operators, then process grading reports with them.'
-            : 'Select LFP or NMC, upload the raw grading-machine export and process it. The matching rules and preprocessing are applied automatically.'}
-        </p>
-      </div>
-
-      {loading && <p className="text-sm text-muted-foreground">Loading grouping rules…</p>}
+    <div className="flex flex-col gap-6">
+      {loading && <p className="text-sm text-genie-text-secondary">Loading grouping rules…</p>}
       {loadError && (
         <IssueList
           title="Could not load the grouping rules"
@@ -828,14 +1076,17 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
         />
       )}
 
+      {!loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />}
+
       {!loading && !loadError && canManageRules && (
-        <section className="glass-panel space-y-3 p-5">
-          <div>
-            <h3 className="font-semibold">Grouping rules (administrator)</h3>
-            <p className="text-xs text-muted-foreground">
-              Each upload is validated, then published as a new version. Operators always use the latest version.
-            </p>
+        <section className="genie-card">
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="genie-card-title">Grouping rules</h3>
+            <StatusPill tone="info">Admin only</StatusPill>
           </div>
+          <p className="text-xs leading-[1.4] text-genie-text-secondary">
+            Each upload is validated, then published as a new version. Operators always use the latest version.
+          </p>
           <div className="grid gap-4 lg:grid-cols-2">
             {CHEMISTRIES.map((c) => (
               <RulesCard
@@ -850,8 +1101,6 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
           </div>
         </section>
       )}
-
-      {!loading && !loadError && canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} />}
     </div>
   );
 }
