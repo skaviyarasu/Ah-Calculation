@@ -257,7 +257,18 @@ steps:
 const SAMPLE = process.env.LFP_SAMPLE_REPORT ?? '';
 const MACHINE = process.env.CELL_GROUPING_RAW_INPUT ?? '';
 
-describe.skipIf(!existsSync(SAMPLE))('TC-GRD-020/021: the real sample report (spec 9.1)', () => {
+/** Why a real-file suite is skipped, or '' when its file is present. */
+function realFileSkip(envVar: string, path: string): string {
+  if (!path) return `skipped: set ${envVar} to the real file to run`;
+  if (!existsSync(path)) return `skipped: ${envVar} file not found: ${path}`;
+  return '';
+}
+const SAMPLE_SKIP = realFileSkip('LFP_SAMPLE_REPORT', SAMPLE);
+const MACHINE_SKIP = realFileSkip('CELL_GROUPING_RAW_INPUT', MACHINE);
+if (SAMPLE_SKIP) console.warn(`TC-GRD-020/021 ${SAMPLE_SKIP}`);
+if (MACHINE_SKIP) console.warn(`TC-GRD-028 ${MACHINE_SKIP}`);
+
+describe.skipIf(SAMPLE_SKIP !== '')(`TC-GRD-020/021: the real sample report (spec 9.1)${SAMPLE_SKIP && ` [${SAMPLE_SKIP}]`}`, () => {
   const expected: Record<string, string> = {
     Number: '01-2-1',
     'cell No.': '1',
@@ -338,7 +349,7 @@ describe.skipIf(!existsSync(SAMPLE))('TC-GRD-020/021: the real sample report (sp
   });
 });
 
-describe.skipIf(!existsSync(MACHINE))('TC-GRD-028: converted columns follow the real machine report', () => {
+describe.skipIf(MACHINE_SKIP !== '')(`TC-GRD-028: converted columns follow the real machine report${MACHINE_SKIP && ` [${MACHINE_SKIP}]`}`, () => {
   it('the 59 machine column names equal row 4 of REDCELL23112026.xlsx, in order', () => {
     const rows = XLSX.utils.sheet_to_json<string[]>(XLSX.read(readFileSync(MACHINE), { type: 'buffer' }).Sheets.Sheet1, {
       header: 1,
