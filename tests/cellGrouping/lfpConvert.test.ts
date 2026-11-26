@@ -1,7 +1,7 @@
 /**
  * LFP per-cell report conversion (spec: LFP-to-grading-report-conversion.md, section 9).
- * TC-GRD-020/021 also run against the real report C:/Users/vidhy/Downloads/01-2-1.xls
- * (override with LFP_SAMPLE_REPORT) and are skipped when it is not on this machine.
+ * TC-GRD-020/021 also run against a real report named by LFP_SAMPLE_REPORT, and TC-GRD-028
+ * against a real machine export named by CELL_GROUPING_RAW_INPUT. They are skipped when unset.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import * as XLSX from 'xlsx';
@@ -254,8 +254,8 @@ steps:
   });
 });
 
-const SAMPLE = process.env.LFP_SAMPLE_REPORT ?? 'C:/Users/vidhy/Downloads/01-2-1.xls';
-const MACHINE = process.env.CELL_GROUPING_RAW_INPUT ?? 'C:/Users/vidhy/Downloads/REDCELL23112026.xlsx';
+const SAMPLE = process.env.LFP_SAMPLE_REPORT ?? '';
+const MACHINE = process.env.CELL_GROUPING_RAW_INPUT ?? '';
 
 describe.skipIf(!existsSync(SAMPLE))('TC-GRD-020/021: the real sample report (spec 9.1)', () => {
   const expected: Record<string, string> = {
