@@ -23,6 +23,7 @@ This directory contains all database schema files for the AH Balancer applicatio
 - **`21_cell_grouping_runs.sql`** - Grading history: `cell_grouping_runs` (one row per Assign groups; processors insert, admins read, no updates/deletes) and the private storage bucket `cell-grouping-runs` for the saved input and grouping report
 - **`22_cell_grouping_devices.sql`** - Approved devices for Group cells: `cell_grouping_devices` (hash of a browser key; pending/active/rejected/revoked, switches on with the first approval), request/decide functions, and rules/runs only through checked functions (`cell_grouping_published_rules`, `cell_grouping_record_run`)
 - **`23_cell_grouping_function_privileges.sql`** - The Cell Grouping functions (migrations 19-22) can only be called by signed-in users (revoked from PUBLIC/anon)
+- **`24_cell_grouping_raw_inputs.sql`** - Grading history also keeps the raw LFP per-cell files: `raw_input_path` on `cell_grouping_runs` (one ZIP per run), stored by `cell_grouping_record_run` and accepted by `cell_grouping_run_upload_allowed`
 - **`migrations/`** - Version-controlled migration files (if needed in future)
 
 ### File Naming Convention

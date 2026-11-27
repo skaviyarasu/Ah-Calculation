@@ -18,6 +18,7 @@ import {
   preprocessExcel,
   preprocessSheetRows,
   PyFloat,
+  rawFilesZip,
   readCsv,
   readReportInputs,
   readWorkbook,
@@ -78,6 +79,8 @@ export interface RunRecord {
   summary: RunSummary;
   inputFile: { name: string; data: Uint8Array | string; type: string };
   reportFile: { name: string; data: string; type: string };
+  /** LFP per-cell reports: the raw per-channel files exactly as uploaded, as one ZIP. */
+  rawInputFile?: { name: string; data: Uint8Array; type: string };
 }
 
 export interface OfficeStatus {
@@ -536,6 +539,8 @@ function ReportProcessor({
   const [fileBytes, setFileBytes] = useState<Uint8Array | null>(null);
   /** Set when the upload is a set of per-cell reports (LFP) instead of one machine export. */
   const [perCell, setPerCell] = useState<ReportInput[] | null>(null);
+  /** The per-cell files exactly as uploaded, kept for the grading history. */
+  const [perCellRaw, setPerCellRaw] = useState<Array<{ name: string; data: Uint8Array }> | null>(null);
   const [sheetName, setSheetName] = useState('');
   const [groupCol, setGroupCol] = useState(DEFAULT_GROUP_COL);
   const [result, setResult] = useState<GroupingResult | null>(null);
@@ -590,6 +595,7 @@ function ReportProcessor({
     const inputs = readReportInputs(read);
     if (files.length > 1 || inputs.some((i) => i.table && isPerCellReport(i.table))) {
       setPerCell(inputs);
+      setPerCellRaw(read);
       setWorkbook(null);
       setFileBytes(null);
       setSheetName('');
@@ -602,6 +608,7 @@ function ReportProcessor({
       return;
     }
     setPerCell(null);
+    setPerCellRaw(null);
     await onDataFile(files[0]);
   };
 
@@ -684,9 +691,10 @@ function ReportProcessor({
           cellsRemoved: out.droppedRows,
           cellsNotConverted: batch.failed,
           summary: summarizeRun(grouped),
-          // the raw per-cell files are large: the converted batch (machine layout) is saved instead
+          // the converted batch (machine layout) that was grouped, plus the raw per-channel files as uploaded
           inputFile: { name: `${batchStem}.xlsx`, data: batchToXlsx(batch), type: XLSX_MIME },
           reportFile: { name: `${batchStem}_${chemistry}_categorized.csv`, data: resultToCsv(grouped), type: 'text/csv' },
+          rawInputFile: perCellRaw ? { name: `${batchStem}_raw.zip`, data: rawFilesZip(perCellRaw), type: 'application/zip' } : undefined,
         });
         return;
       }

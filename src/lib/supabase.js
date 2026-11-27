@@ -2170,7 +2170,8 @@ export const cellGrouping = {
    * uploads the input and the grouped CSV to the private bucket, then adds the run row.
    * run = { chemistry, rulesId, rulesFileName, inputKind, inputFileName, inputFileCount, inputFileNames,
    *         cellsRead, cellsRemoved, cellsNotConverted, summary: { cellsGrouped, groupCounts, unassignedCount, rejectedCount },
-   *         inputFile: { name, data: Uint8Array|string, type }, reportFile: { name, data: string, type } }
+   *         inputFile: { name, data: Uint8Array|string, type }, reportFile: { name, data: string, type },
+   *         rawInputFile?: { name, data: Uint8Array, type } }   (LFP: the raw per-cell files as one ZIP; migration 24)
    */
   async recordRun(run) {
     const user = await auth.getCurrentUser()
@@ -2190,6 +2191,7 @@ export const cellGrouping = {
     const pathFor = (kind, file) => (file ? `${folder}/${kind}/${safe(file.name)}` : null)
     const inputPath = pathFor('input', run.inputFile)
     const reportPath = pathFor('report', run.reportFile)
+    const rawPath = pathFor('raw', run.rawInputFile)
     const row = {
       id,
       chemistry: run.chemistry,
@@ -2207,22 +2209,32 @@ export const cellGrouping = {
       unassigned_count: run.summary.unassignedCount,
       rejected_count: run.summary.rejectedCount,
       input_path: inputPath,
-      report_path: reportPath
+      report_path: reportPath,
+      raw_input_path: rawPath
     }
     // Checked every time (permission + office network + approved device); the files can only be
     // uploaded for a run recorded this way.
     const { error } = await supabase.rpc('cell_grouping_record_run', { p_device_key: deviceKey(), p_run: row })
     if (error && functionMissing(error)) {
-      // migration 22 not installed: files first, then the row (migration 21 policies)
+      // migration 22 not installed: files first, then the row (migration 21 policies; no raw files)
       await upload('input', run.inputFile)
       await upload('report', run.reportFile)
-      const { error: insertError } = await supabase.from('cell_grouping_runs').insert({ ...row, user_id: user.id, user_email: user.email ?? null })
+      const { raw_input_path: _raw, ...legacyRow } = row
+      const { error: insertError } = await supabase.from('cell_grouping_runs').insert({ ...legacyRow, user_id: user.id, user_email: user.email ?? null })
       if (insertError) throw new Error(`Could not record the run: ${insertError.message}`)
       return id
     }
     if (error) throw accessError(error)
     await upload('input', run.inputFile)
     await upload('report', run.reportFile)
+    if (run.rawInputFile) {
+      try {
+        await upload('raw', run.rawInputFile)
+      } catch (e) {
+        // the database only accepts this upload once migration 24 is installed
+        throw new Error(`${e.message}. The run and its converted input were saved; if this keeps happening, run database/24_cell_grouping_raw_inputs.sql in Supabase.`)
+      }
+    }
     return id
   },
 

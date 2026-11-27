@@ -23,7 +23,7 @@ export {
   LFP_EXTRA_COLUMNS,
 } from './lfpConvert.ts';
 export type { BatchResult, ConvertedReport, ReportInput, TableCell, LfpConstants } from './lfpConvert.ts';
-export { readReportTable, readReportInputs, batchToXlsx, batchToCsv } from './reportFiles.ts';
+export { readReportTable, readReportInputs, batchToXlsx, batchToCsv, rawFilesZip } from './reportFiles.ts';
 export { summarizeRun, isUnassignedGroup } from './runRecord.ts';
 export type { RunSummary } from './runRecord.ts';
 export type { PreprocessedFile } from './preprocess.ts';

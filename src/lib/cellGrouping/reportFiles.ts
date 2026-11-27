@@ -2,6 +2,7 @@
  * File reading for LFP per-cell reports and writing the converted batch in the machine layout.
  * Kept apart from lfpConvert.ts so the conversion stays pure.
  */
+import { zipSync } from 'fflate';
 import * as XLSX from 'xlsx';
 import { parseCsvRows } from './csv.ts';
 import type { BatchResult, ReportInput, TableCell } from './lfpConvert.ts';
@@ -40,6 +41,22 @@ export function readReportInputs(files: Array<{ name: string; data: Uint8Array }
       return { fileName: name, readError: (e as Error).message };
     }
   });
+}
+
+/**
+ * The raw per-cell files exactly as uploaded, as one ZIP (saved with the run in the grading
+ * history). Files keep their names; a repeated name gets " (2)", " (3)", ... before the extension.
+ */
+export function rawFilesZip(files: Array<{ name: string; data: Uint8Array }>): Uint8Array {
+  const entries: Record<string, Uint8Array> = {};
+  for (const { name, data } of files) {
+    const base = (name.split(/[\\/]/).pop() || 'file').trim() || 'file';
+    let entry = base;
+    for (let n = 2; entry in entries; n++) entry = base.replace(/(\.[^.]*)?$/, (ext) => ` (${n})${ext}`);
+    entries[entry] = data;
+  }
+  // .xlsx is already compressed; the old binary .xls and .csv compress well.
+  return zipSync(entries, { level: 6 });
 }
 
 /** Text that is a plain number is written to the .xlsx as a number (spec 6). */
