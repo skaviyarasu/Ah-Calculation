@@ -6,8 +6,10 @@
 --   Postgres lets everyone (PUBLIC) execute new functions, and Supabase also grants
 --   them to the anonymous role by default. The Cell Grouping functions from migrations
 --   19-22 are meant for signed-in users only, so take that right away from PUBLIC and
---   anon, and grant it to authenticated users. (The functions still check roles,
---   office network and device themselves; this only stops signed-out callers.)
+--   anon, and grant it to authenticated users. service_role is granted explicitly too,
+--   so server-side code keeps access even if it only had it through PUBLIC. (The
+--   functions still check roles, office network and device themselves; this only
+--   stops signed-out callers.)
 --
 -- Instructions: Supabase Dashboard -> SQL Editor -> New query -> paste -> Run.
 -- Safe to run more than once. Requires migrations 19-22.
@@ -35,6 +37,7 @@ BEGIN
   LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon', fn);
     EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', fn);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', fn);
   END LOOP;
 END $$;
 
