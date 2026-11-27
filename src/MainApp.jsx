@@ -7,6 +7,7 @@ import AccountingDashboard from "./components/AccountingDashboard";
 import CellGrouping from "./components/CellGrouping";
 import GenieShell from "./components/GenieShell";
 import GradingHistory from "./components/GradingHistory";
+import UnassignedCells from "./components/UnassignedCells";
 import { useRole } from "./hooks/useRole";
 import { useBranch } from "./hooks/useBranch";
 import { useCellGroupingAccess } from "./hooks/useCellGroupingAccess";
@@ -46,7 +47,7 @@ function MainApp() {
 
   // Redirect away from admin-only views if user is not admin
   useEffect(() => {
-    if ((currentView === "admin" || currentView === "grading-history") && !loading && !isAdmin) {
+    if ((currentView === "admin" || currentView === "grading-history" || currentView === "unassigned-cells") && !loading && !isAdmin) {
       setCurrentView("ah-balancer");
     }
   }, [currentView, isAdmin, loading]);
@@ -81,7 +82,12 @@ function MainApp() {
         breadcrumb: "Grading",
         items: [
           ...(canUseCellGrouping ? [{ id: "cell-grouping", label: "Group cells", description: "Grading report processing" }] : []),
-          ...(isAdmin ? [{ id: "grading-history", label: "Grading history", description: "Grading runs, inputs and reports (admin)" }] : []),
+          ...(isAdmin
+            ? [
+                { id: "grading-history", label: "Grading history", description: "Grading runs, inputs and reports (admin)" },
+                { id: "unassigned-cells", label: "Unassigned cells (NA)", description: "Find NA cells and improve the grouping rules (admin)" },
+              ]
+            : []),
         ],
       },
       {
@@ -219,6 +225,14 @@ function MainApp() {
             )}
             {currentView === "grading-history" && isAdmin && (
               <GradingHistory listRuns={cellGrouping.listRuns} fileUrl={cellGrouping.runFileUrl} />
+            )}
+            {currentView === "unassigned-cells" && isAdmin && (
+              <UnassignedCells
+                listRuns={cellGrouping.listRuns}
+                runFileText={cellGrouping.runFileText}
+                loadRules={cellGrouping.getPublishedRules}
+                publishRules={canManageRules ? cellGrouping.publishRules : undefined}
+              />
             )}
             {currentView === "inventory" && <InventoryManagement />}
             {currentView === "accounting" && <AccountingDashboard />}

@@ -476,9 +476,19 @@ function RulesCard({
             Published {formatDate(published.uploaded_at)}
             {published.uploaded_by_email && ` by ${published.uploaded_by_email}`}
           </p>
-          <button type="button" onClick={() => setShowText((v) => !v)} className="self-start text-genie-primary underline-offset-2 hover:underline">
-            {showText ? 'Hide rules' : 'View rules'}
-          </button>
+          <div className="flex flex-wrap gap-4">
+            <button type="button" onClick={() => setShowText((v) => !v)} className="text-genie-primary underline-offset-2 hover:underline">
+              {showText ? 'Hide rules' : 'View rules'}
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadBytes(published.yaml_text, published.file_name || `GroupingRules-${label}.yaml`, 'application/x-yaml;charset=utf-8')}
+              title="Saves the live rules exactly as published, e.g. to keep them in the Cell Grouping rules folder"
+              className="text-genie-primary underline-offset-2 hover:underline"
+            >
+              Download rules (.yaml)
+            </button>
+          </div>
         </div>
       ) : (
         <div>
