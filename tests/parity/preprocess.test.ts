@@ -116,16 +116,30 @@ describe.skipIf(!pythonReady)('preprocessed raw Excel: TypeScript output is byte
 
 /**
  * Real raw machine export → must reproduce the output made with the manual workflow.
- * Paths can be overridden with env vars; the test is skipped when the files are missing.
+ * Set CELL_GROUPING_RAW_INPUT to the raw export (rules/expected paths can be overridden too);
+ * the test is skipped when it is unset or any file is missing.
  */
 const REAL = {
-  input: process.env.CELL_GROUPING_RAW_INPUT ?? 'C:/Users/vidhy/Downloads/REDCELL23112026.xlsx',
+  input: process.env.CELL_GROUPING_RAW_INPUT ?? '',
   rules: process.env.CELL_GROUPING_RAW_RULES ?? 'C:/Users/Public/Documents/Cell Grouping/GroupingRules.yaml',
   expected: process.env.CELL_GROUPING_RAW_EXPECTED ?? 'C:/Users/Public/Documents/Cell Grouping/final.csv',
 };
-const realReady = [REAL.input, REAL.rules, REAL.expected].every((f) => existsSync(f));
+const realMissing = [
+  ['CELL_GROUPING_RAW_RULES', REAL.rules],
+  ['CELL_GROUPING_RAW_EXPECTED', REAL.expected],
+]
+  .filter(([, f]) => !existsSync(f))
+  .map(([envVar, f]) => `${envVar} file not found: ${f}`);
+const REAL_SKIP = !REAL.input
+  ? 'skipped: set CELL_GROUPING_RAW_INPUT to the raw export to run'
+  : !existsSync(REAL.input)
+    ? `skipped: CELL_GROUPING_RAW_INPUT file not found: ${REAL.input}`
+    : realMissing.length
+      ? `skipped: ${realMissing.join('; ')}`
+      : '';
+if (REAL_SKIP) console.warn(`real raw export test ${REAL_SKIP}`);
 
-describe.skipIf(!realReady)('real raw export reproduces the manually processed output', () => {
+describe.skipIf(REAL_SKIP !== '')(`real raw export reproduces the manually processed output${REAL_SKIP && ` [${REAL_SKIP}]`}`, () => {
   it('REDCELL raw xlsx + NMC rules with a preprocess block → final.csv (byte-identical)', () => {
     const expected = readFileSync(REAL.expected, 'utf8');
     // Header = the processed file's header without the added group column.
