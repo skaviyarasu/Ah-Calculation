@@ -26,3 +26,5 @@ npm-debug.log*
 *.tmp
 *.temp
 __pycache__/
+graphify-out/
+.claude/settings.local.json
