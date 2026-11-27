@@ -22,6 +22,8 @@ export interface GradingRun {
   rejected_count: number;
   input_path: string | null;
   report_path: string | null;
+  /** LFP per-cell reports: the raw per-channel files as one ZIP (database/24_cell_grouping_raw_inputs.sql). */
+  raw_input_path?: string | null;
 }
 
 export interface GradingHistoryProps {
@@ -286,6 +288,17 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                           >
                             Input
                           </button>
+                          {r.input_kind === 'per_cell_reports' && (
+                            <button
+                              type="button"
+                              disabled={!r.raw_input_path}
+                              onClick={() => openFile(r.raw_input_path ?? null)}
+                              title={r.raw_input_path ? 'The per-channel files exactly as uploaded (ZIP)' : 'Not saved for this run'}
+                              className="mr-3 text-genie-primary underline-offset-2 hover:underline disabled:opacity-40"
+                            >
+                              Raw files
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={!r.report_path}
@@ -323,7 +336,11 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                                 <p>Unassigned: {r.unassigned_count}</p>
                                 <p>Rejected: {r.rejected_count}</p>
                                 {r.input_kind === 'per_cell_reports' && (
-                                  <p className="text-xs">Saved input: the converted batch (machine layout); the raw per-cell files are not stored.</p>
+                                  <p className="text-xs">
+                                    {r.raw_input_path
+                                      ? 'Saved input: the converted batch (machine layout), and the raw per-cell files as uploaded (Raw files, ZIP).'
+                                      : 'Saved input: the converted batch (machine layout); the raw per-cell files were not stored for this run.'}
+                                  </p>
                                 )}
                               </div>
                               {r.input_file_names && r.input_file_names.length > 0 && (
