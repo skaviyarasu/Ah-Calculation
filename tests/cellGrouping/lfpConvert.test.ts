@@ -21,7 +21,8 @@ import {
 import type { TableCell } from '../../src/lib/cellGrouping/lfpConvert.ts';
 import { parseRules } from '../../src/lib/cellGrouping/loadRules.ts';
 import { preprocessExcel, preprocessSheetRows } from '../../src/lib/cellGrouping/preprocess.ts';
-import { batchToXlsx, readReportInputs, readReportTable } from '../../src/lib/cellGrouping/reportFiles.ts';
+import { unzipSync } from 'fflate';
+import { batchToXlsx, mergedFileXlsx, mergedFiles, rawFilesZip, readReportInputs, readReportTable } from '../../src/lib/cellGrouping/reportFiles.ts';
 
 const HEADER = ['Voltage(mV)', 'Current(mA)', 'Capacity(mAh)', 'h/m/s', 'Current Step', 'Cycles', 'Status', 'Time'];
 
@@ -377,5 +378,279 @@ describe('download name', () => {
     const t = makeReport();
     const b = convertBatch([' 01-2-2.csv', ' 01-2-1.csv'].map((fileName) => ({ fileName, table: t })));
     expect(batchFileStem(b)).toBe('LFP_2_reports_01-2-1_to_01-2-2');
+  });
+});
+
+/**
+ * A power cut splits one cell's test over several files: the later part is named like the first
+ * plus "(n)" or "_n", resumes in the step where it stopped, and counts that step's capacity from 0.
+ */
+describe('tests split by a power cut', () => {
+  const full = makeReport();
+  const TIME = HEADER.indexOf('Time');
+  const STEP = HEADER.indexOf('Current Step');
+  const CAP = HEADER.indexOf('Capacity(mAh)');
+  const shift = (text: string, seconds: number) => {
+    const d = new Date(Date.parse(text.replace(' ', 'T') + 'Z') + seconds * 1000);
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  };
+  /** Data rows [from, to) of the full report as a file of its own, like the tester writes after a restart. */
+  function part(from: number, to: number, gapSeconds = 0): string[][] {
+    const rows = full.slice(1).slice(from, to).map((r) => [...r]);
+    if (from > 0) {
+      const stopStep = full[from][STEP]; // last row before the cut (full[0] is the header)
+      const qAtCut = Number(full[from][CAP]);
+      for (const r of rows) {
+        if (r[STEP] !== stopStep) break;
+        r[CAP] = String(Number(r[CAP]) - qAtCut); // the resumed step counts from 0 again
+      }
+    }
+    for (const r of rows) r[TIME] = shift(r[TIME], gapSeconds);
+    return [HEADER, ...rows];
+  }
+  const dataRows = full.length - 1;
+  const firstOfStep = (n: number) => full.slice(1).findIndex((r) => r[STEP] === String(n));
+  const cutInDischarge = firstOfStep(3) + 200;
+  const unsplit = convertBatch([{ fileName: '01-2-1.csv', table: full }]);
+
+  it('merges "(1)" and "_2" parts into one cell, in recorded order, and converts it', () => {
+    const cut2 = firstOfStep(5) + 50;
+    const b = convertBatch([
+      { fileName: '01-2-1_2.csv', table: part(cut2, dataRows, 7200) },
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1 (1).csv', table: part(cutInDischarge, cut2, 3600) },
+    ]);
+    expect(b.reports).toHaveLength(1);
+    const r = b.reports[0];
+    expect(r.error).toBeNull();
+    expect(r.cellId).toBe('01-2-1');
+    expect(r.parts).toEqual(['01-2-1.csv', '01-2-1 (1).csv', '01-2-1_2.csv']);
+    expect(r.fileName).toBe('01-2-1.csv + 01-2-1 (1).csv + 01-2-1_2.csv');
+  });
+
+  it('adds the capacity reached before the cut to the resumed step', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(cutInDischarge, dataRows, 3600) },
+    ]);
+    const merged = named(0, b);
+    const whole = named(0, unsplit);
+    expect(merged.ERROR).toBe('---');
+    for (const col of ['1Capacity(mAh)', '3Capacity(mAh)', '5Capacity(mAh)', '5SOC_set(%)', 'CC_Ratio_Corr(%)']) {
+      expect(merged[col], col).toBe(whole[col]);
+    }
+  });
+
+  it('leaves the power-off time out of the step time', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(cutInDischarge, dataRows, 3 * 3600) },
+    ]);
+    // one 10 s sample interval is lost at the cut (values are written to 0.1 min); the 3 h outage is not added
+    const merged = Number(named(0, b)['3Time(minute)']);
+    const whole = Number(named(0, unsplit)['3Time(minute)']);
+    expect(Math.abs(merged - (whole - 10 / 60))).toBeLessThanOrEqual(0.1);
+  });
+
+  it('a cut between steps needs no capacity change', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, firstOfStep(3)) },
+      { fileName: '01-2-1(1).csv', table: [HEADER, ...full.slice(1 + firstOfStep(3)).map((r) => [...r.slice(0, TIME), shift(r[TIME], 600)])] },
+    ]);
+    expect(named(0, b)['3Capacity(mAh)']).toBe(named(0, unsplit)['3Capacity(mAh)']);
+  });
+
+  it('a single part still fails as an incomplete test', () => {
+    const b = convertBatch([{ fileName: '01-2-1.csv', table: part(0, cutInDischarge) }]);
+    expect(b.reports[0].error).toBe('Missing step 4, 5');
+  });
+
+  it('rejects a part that goes back to an earlier step', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(0, dataRows, 3600) },
+    ]);
+    expect(b.reports[0].error).toBe('Part 01-2-1(1).csv starts at step 1, but an earlier part already reached step 3');
+  });
+
+  it('names the part that cannot be read', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', readError: 'corrupt file' },
+    ]);
+    expect(b.reports[0].error).toBe('File cannot be read: 01-2-1(1).csv: corrupt file');
+  });
+
+  it('does not merge suffixed names without the plain file (e.g. CELL_1 and CELL_2 are two cells)', () => {
+    const b = convertBatch([
+      { fileName: 'CELL_1.csv', table: full },
+      { fileName: 'CELL_2.csv', table: full },
+    ]);
+    expect(b.reports.map((r) => [r.cellId, r.error])).toEqual([
+      ['CELL_1', null],
+      ['CELL_2', null],
+    ]);
+  });
+
+  it('still reports exactly repeated names as duplicates, one row each', () => {
+    const b = convertBatch([
+      { fileName: 'a/01-2-1.csv', table: full },
+      { fileName: 'b/01-2-1.csv', table: full },
+    ]);
+    expect(b.reports.map((r) => r.error)).toEqual([
+      'Duplicate cell ID: another report has the same file name',
+      'Duplicate cell ID: another report has the same file name',
+    ]);
+  });
+
+  it('numbers cells after merging (cell No. counts cells, not files)', () => {
+    const b = convertBatch([
+      { fileName: '01-2-2.csv', table: full },
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(cutInDischarge, dataRows, 600) },
+    ]);
+    expect(b.reports.map((r) => [r.cellNo, r.cellId, r.error])).toEqual([
+      [1, '01-2-1', null],
+      [2, '01-2-2', null],
+    ]);
+  });
+  it('merges any number of parts (cuts in steps 1, 3 and 5)', () => {
+    const cuts = [firstOfStep(1) + 300, cutInDischarge, firstOfStep(5) + 100];
+    const bounds = [0, ...cuts, dataRows];
+    const b = convertBatch(
+      bounds.slice(0, -1).map((from, k) => ({
+        fileName: k === 0 ? '01-2-1.xls' : `01-2-1(${k}).xls`,
+        table: part(from, bounds[k + 1], k * 1800),
+      })),
+    );
+    const r = b.reports[0];
+    expect(r.error).toBeNull();
+    expect(r.parts).toHaveLength(4);
+    const merged = named(0, b);
+    const whole = named(0, unsplit);
+    for (const col of ['1Capacity(mAh)', '3Capacity(mAh)', '5Capacity(mAh)', 'CC_Ratio_Corr(%)', '5SOC_set(%)']) expect(merged[col], col).toBe(whole[col]);
+  });
+
+  it('reports a merged test that still misses a step, and writes no merged file for it', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(cutInDischarge, firstOfStep(5), 600) },
+    ]);
+    expect(b.reports[0].error).toBe('Merged parts are still incomplete: Missing step 5');
+    expect(b.reports[0].mergedTable).toBeUndefined();
+    expect(mergedFiles(b)).toEqual([]);
+  });
+
+  it('works with .xls parts whose Time cells are Excel dates', () => {
+    const withDates = (rows: string[][]) =>
+      rows.map((r, k) => (k === 0 ? r : r.map((v, c) => (c === TIME ? new Date(v.replace(' ', 'T')) : v))));
+    const xls = (rows: string[][]) => workbookOf(withDates(rows), 'biff8');
+    const inputs = readReportInputs([
+      { name: '01-2-1.xls', data: xls(part(0, cutInDischarge)) },
+      { name: '01-2-1(1).xls', data: xls(part(cutInDischarge, dataRows, 3600)) },
+    ]);
+    expect(inputs[0].table![1][TIME]).toBeInstanceOf(Date);
+    const b = convertBatch(inputs);
+    expect(b.reports[0].error).toBeNull();
+    expect(named(0, b)['3Capacity(mAh)']).toBe(named(0, unsplit)['3Capacity(mAh)']);
+    const [{ name, data }] = mergedFiles(b);
+    expect(convertBatch(readReportInputs([{ name, data }])).reports[0].values).toEqual(b.reports[0].values);
+  });
+
+  describe('channel names (1-2-1_x): every part carries the suffix, several cells per upload', () => {
+    const cut2 = firstOfStep(5) + 50;
+    const split = (channel: string, gap: number) => [
+      { fileName: `${channel}_1.xls`, table: part(0, cutInDischarge) },
+      { fileName: `${channel}_2.xls`, table: part(cutInDischarge, cut2, gap) },
+      { fileName: `${channel}_3.xls`, table: part(cut2, dataRows, 2 * gap) },
+    ];
+    // shuffled upload: two split cells, one whole cell, one cell named _1 that was never split
+    const [a1, a2, a3] = split('1-2-1', 3600);
+    const [b1, b2, b3] = split('1-2-2', 600);
+    const b = convertBatch([b3, a2, { fileName: '1-2-3.xls', table: full }, a1, b1, { fileName: '1-2-4_1.xls', table: full }, a3, b2]);
+
+    it('merges the parts of each channel into its own cell, cells in channel order', () => {
+      expect(b.reports.map((r) => [r.cellNo, r.cellId, r.error, r.parts ?? null])).toEqual([
+        [1, '1-2-1', null, ['1-2-1_1.xls', '1-2-1_2.xls', '1-2-1_3.xls']],
+        [2, '1-2-2', null, ['1-2-2_1.xls', '1-2-2_2.xls', '1-2-2_3.xls']],
+        [3, '1-2-3', null, null],
+        [4, '1-2-4', null, null],
+      ]);
+      expect(b.converted).toBe(4);
+    });
+    it('each merged cell has the values of its uninterrupted test', () => {
+      for (const idx of [0, 1]) {
+        for (const col of ['1Capacity(mAh)', '3Capacity(mAh)', '5Capacity(mAh)', 'CC_Ratio_Corr(%)']) {
+          expect(named(idx, b)[col], `${b.reports[idx].cellId} ${col}`).toBe(named(0, unsplit)[col]);
+        }
+      }
+    });
+    it('writes one merged raw file per split channel, named by channel', () => {
+      expect(mergedFiles(b).map((m) => [m.name, m.parts])).toEqual([
+        ['1-2-1.xlsx', ['1-2-1_1.xls', '1-2-1_2.xls', '1-2-1_3.xls']],
+        ['1-2-2.xlsx', ['1-2-2_1.xls', '1-2-2_2.xls', '1-2-2_3.xls']],
+      ]);
+    });
+    it('keeps channels apart: parts of 1-2-1 never join 1-2-10 or 1-2-11', () => {
+      const c = convertBatch([
+        { fileName: '1-2-10_1.xls', table: part(0, cutInDischarge) },
+        { fileName: '1-2-1_1.xls', table: part(0, cutInDischarge) },
+        { fileName: '1-2-10_2.xls', table: part(cutInDischarge, dataRows, 60) },
+        { fileName: '1-2-1_2.xls', table: part(cutInDischarge, dataRows, 60) },
+        { fileName: '1-2-11.xls', table: full },
+      ]);
+      expect(c.reports.map((r) => [r.cellId, r.error, r.parts?.length ?? 1])).toEqual([
+        ['1-2-1', null, 2],
+        ['1-2-10', null, 2],
+        ['1-2-11', null, 1],
+      ]);
+    });
+    it('a missing part of one channel only fails that cell', () => {
+      const c = convertBatch([a1, a3, b1, b2, b3]);
+      expect(c.reports.map((r) => [r.cellId, r.error])).toEqual([
+        ['1-2-1', 'Merged parts are still incomplete: Missing step 4'],
+        ['1-2-2', null],
+      ]);
+    });
+  });
+
+  describe('the merged raw file', () => {
+    const b = convertBatch([
+      { fileName: '01-2-1.csv', table: part(0, cutInDischarge) },
+      { fileName: '01-2-1(1).csv', table: part(cutInDischarge, firstOfStep(5) + 40, 3600) },
+      { fileName: '01-2-1_2.csv', table: part(firstOfStep(5) + 40, dataRows, 9000) },
+    ]);
+    const table = b.reports[0].mergedTable!;
+
+    it('has every sample of every part, all 5 steps, and where each row came from', () => {
+      expect(table[0]).toEqual([...HEADER, 'Original Time', 'Source File']);
+      expect(table).toHaveLength(full.length);
+      expect(new Set(table.slice(1).map((r) => String(r[STEP])))).toEqual(new Set(['1', '2', '3', '4', '5']));
+      expect(table[1].at(-1)).toBe('01-2-1.csv');
+      expect(table.at(-1)!.at(-1)).toBe('01-2-1_2.csv');
+      // a resumed row keeps its recorded time; Time is continuous and capacity added up
+      const firstResumed = table[1 + cutInDischarge];
+      expect(firstResumed.at(-1)).toBe('01-2-1(1).csv');
+      expect(firstResumed.at(-2)).toBe(shift(full[1 + cutInDischarge][TIME], 3600));
+      expect(Number(firstResumed[CAP])).toBe(Number(full[1 + cutInDischarge][CAP]));
+    });
+
+    it('converts on its own to the same row as the merged parts (as a table and as .xlsx)', () => {
+      const alone = convertBatch([{ fileName: '01-2-1.xlsx', table }]);
+      expect(alone.reports[0].error).toBeNull();
+      expect(alone.reports[0].values).toEqual(b.reports[0].values);
+      const [{ name, data }] = mergedFiles(b);
+      expect(name).toBe('01-2-1.xlsx');
+      const reread = convertBatch(readReportInputs([{ name, data }]));
+      expect(reread.reports[0].values).toEqual(b.reports[0].values);
+      expect(mergedFileXlsx(table)[0]).toBe(0x50); // a real .xlsx (zip)
+    });
+
+    it('is backed up with every uploaded part in the run ZIP', () => {
+      const uploaded = ['01-2-1.csv', '01-2-1(1).csv', '01-2-1_2.csv'].map((name) => ({ name, data: new TextEncoder().encode(name) }));
+      const zip = unzipSync(rawFilesZip(uploaded, mergedFiles(b)));
+      expect(Object.keys(zip).sort()).toEqual(['01-2-1(1).csv', '01-2-1.csv', '01-2-1_2.csv', 'merged/01-2-1.xlsx', 'merged/README.txt']);
+      expect(new TextDecoder().decode(zip['merged/README.txt'])).toContain('01-2-1.xlsx: 01-2-1.csv -> 01-2-1(1).csv -> 01-2-1_2.csv');
+    });
   });
 });

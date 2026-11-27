@@ -293,7 +293,7 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                               type="button"
                               disabled={!r.raw_input_path}
                               onClick={() => openFile(r.raw_input_path ?? null)}
-                              title={r.raw_input_path ? 'The per-channel files exactly as uploaded (ZIP)' : 'Not saved for this run'}
+                              title={r.raw_input_path ? 'The per-channel files exactly as uploaded, plus merged raw files of tests split by a power cut under merged/ (ZIP)' : 'Not saved for this run'}
                               className="mr-3 text-genie-primary underline-offset-2 hover:underline disabled:opacity-40"
                             >
                               Raw files
@@ -338,7 +338,7 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                                 {r.input_kind === 'per_cell_reports' && (
                                   <p className="text-xs">
                                     {r.raw_input_path
-                                      ? 'Saved input: the converted batch (machine layout), and the raw per-cell files as uploaded (Raw files, ZIP).'
+                                      ? 'Saved input: the converted batch (machine layout), and the raw per-cell files as uploaded (Raw files, ZIP; tests split by a power cut: every part, and the merged file under merged/).'
                                       : 'Saved input: the converted batch (machine layout); the raw per-cell files were not stored for this run.'}
                                   </p>
                                 )}

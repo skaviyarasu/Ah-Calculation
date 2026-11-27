@@ -51,6 +51,8 @@ export interface ParsedReport {
   firstTimeText: string;
   /** Absolute time of the first valid sample in seconds (to find the earliest report). */
   startSeconds: number;
+  /** Table row index of each sample (same order as samples). */
+  rows?: number[];
 }
 
 // ---------------------------------------------------------------------------
@@ -199,9 +201,11 @@ export function parseReport(table: TableCell[][]): ParsedReport {
   const si = columnIndex(header, ['Current Step', 'Step'], 4);
   const ti = columnIndex(header, ['Time', 'Date Time', 'DateTime'], 7);
   const samples: Sample[] = [];
+  const rows: number[] = [];
   let t0: number | null = null;
   let firstTimeText = '';
-  for (const row of table.slice(1)) {
+  for (let r = 1; r < table.length; r++) {
+    const row = table[r];
     const v = toNumber(row[vi]);
     const i = toNumber(row[ii]);
     const q = toNumber(row[qi]);
@@ -213,8 +217,20 @@ export function parseReport(table: TableCell[][]): ParsedReport {
       firstTimeText = time.text;
     }
     samples.push({ v, i, q, step, t: time.seconds - t0 });
+    rows.push(r);
   }
-  return { samples, firstTimeText, startSeconds: t0 ?? Number.NaN };
+  return { samples, firstTimeText, startSeconds: t0 ?? Number.NaN, rows };
+}
+
+/** Time text in the convention parseTime reads it back with (Date: local clock; text: as written). */
+function timeText(seconds: number, kind: 'date' | 'text'): string {
+  const d = new Date(Math.round(seconds * 1000));
+  const [y, mo, da, h, mi, s, ms] =
+    kind === 'date'
+      ? [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()]
+      : [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()];
+  const sec = ms ? `${pad2(s)}.${String(ms).padStart(3, '0').replace(/0+$/, '')}` : pad2(s);
+  return `${y}-${pad2(mo)}-${pad2(da)} ${pad2(h)}:${pad2(mi)}:${sec}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +378,12 @@ export interface ReportInput {
 export interface ConvertedReport {
   cellId: string;
   cellNo: number;
+  /** The file name, or every part joined with " + " when a test was split by a power cut. */
   fileName: string;
+  /** Set when the cell's test was split over several files that were merged (in recorded order). */
+  parts?: string[];
+  /** The merged raw file (per-cell layout, all 5 steps); only for a merged cell that converted. */
+  mergedTable?: TableCell[][];
   /** null when converted. */
   error: string | null;
   values: string[];
@@ -392,6 +413,110 @@ export function cellIdFromFileName(fileName: string): string {
 
 /** Key used to detect duplicate cell IDs: case and surrounding spaces ignored. */
 const duplicateKey = (cellId: string) => cellId.trim().toLowerCase();
+
+/**
+ * Cell ID without a "later part" suffix: "01-2-1(1)", "01-2-1 (2)" and "01-2-1_2" → "01-2-1".
+ * null when the name has no such suffix.
+ */
+export function partBase(cellId: string): string | null {
+  const m = /^(.*?)(?:\s*\(\d+\)|_\d+)$/.exec(cellId);
+  return m && m[1].trim() !== '' ? m[1] : null;
+}
+
+/**
+ * Channel number of a part named after a tester channel: "1-2-1_1", "1-2-1_2", " 01-2-1(3)" →
+ * "1-2-1" / " 01-2-1". For channel names the suffix is always the part number, even when no file
+ * without a suffix was uploaded. null for other names.
+ */
+export function channelBase(cellId: string): string | null {
+  const m = /^(\s*\d+(?:-\d+)+)(?:\s*\(\d+\)|_\d+)$/.exec(cellId);
+  return m ? m[1] : null;
+}
+
+/**
+ * One test split over several files by a power cut, joined in recorded order (by start time).
+ * The power-off gap is left out of the time line. When a part resumes the step the previous part
+ * stopped in, the tester counts that step's capacity from 0 again, so the capacity reached before
+ * the cut is added to the resumed samples of that step. Parts without data rows are ignored.
+ */
+export function mergeParts(parts: Array<{ fileName: string; parsed: ParsedReport; table?: TableCell[][] }>): {
+  parsed: ParsedReport;
+  error: string | null;
+  /** The merged raw file (when every part's table was given): see mergedTable. */
+  table?: TableCell[][];
+} {
+  const ordered = parts.filter((p) => p.parsed.samples.length > 0).sort((a, b) => a.parsed.startSeconds - b.parsed.startSeconds);
+  if (!ordered.length) return { parsed: { samples: [], firstTimeText: '', startSeconds: Number.NaN }, error: null };
+  const samples: Sample[] = ordered[0].parsed.samples.map((s) => ({ ...s }));
+  /** Where each merged sample came from. */
+  const origin: Array<{ part: number; sample: number }> = ordered[0].parsed.samples.map((_, k) => ({ part: 0, sample: k }));
+  for (let p = 1; p < ordered.length; p++) {
+    const part = ordered[p];
+    const prev = samples[samples.length - 1];
+    const next = part.parsed.samples;
+    if (next[0].step < prev.step) {
+      return {
+        parsed: { ...ordered[0].parsed, samples },
+        error: `Part ${part.fileName} starts at step ${next[0].step}, but an earlier part already reached step ${prev.step}`,
+      };
+    }
+    let offset = 0;
+    if (next[0].step === prev.step && next[0].q < prev.q) {
+      offset = samples.filter((s) => s.step === prev.step).reduce((m, s) => Math.max(m, s.q), 0);
+    }
+    let resumed = next[0].step === prev.step;
+    next.forEach((s, k) => {
+      if (s.step !== prev.step) resumed = false;
+      samples.push({ ...s, q: resumed ? s.q + offset : s.q, t: prev.t + s.t });
+      origin.push({ part: p, sample: k });
+    });
+  }
+  const parsed: ParsedReport = { samples, firstTimeText: ordered[0].parsed.firstTimeText, startSeconds: ordered[0].parsed.startSeconds };
+  const tables = ordered.map((o) => o.table);
+  if (!tables.every((t): t is TableCell[][] => Array.isArray(t)) || !ordered.every((o) => o.parsed.rows)) return { parsed, error: null };
+  return { parsed, error: null, table: mergedTable(ordered.map((o, k) => ({ fileName: o.fileName, parsed: o.parsed, table: tables[k] })), samples, origin) };
+}
+
+/**
+ * The merged raw file in the per-cell layout of the first part: one row per merged sample with the
+ * part's original values, except Capacity(mAh) (added up across the cut) and Time (continuous, the
+ * power-off gap removed), so converting this file alone gives the same row as the merged parts.
+ * Two columns are added: "Original Time" (as recorded) and "Source File" (the part it came from).
+ */
+function mergedTable(
+  parts: Array<{ fileName: string; parsed: ParsedReport; table: TableCell[][] }>,
+  samples: Sample[],
+  origin: Array<{ part: number; sample: number }>,
+): TableCell[][] {
+  const header = parts[0].table[0] ?? [];
+  const norm = (h: TableCell) =>
+    String(h ?? '')
+      .trim()
+      .toLowerCase();
+  // each part's columns in the first part's order (by header name, else the same position)
+  const maps = parts.map(({ table }) => header.map((h, c) => {
+    const idx = (table[0] ?? []).findIndex((x) => norm(x) === norm(h));
+    return idx >= 0 ? idx : c;
+  }));
+  const qi = columnIndex(header, ['Capacity(mAh)'], 2);
+  const ti = columnIndex(header, ['Time', 'Date Time', 'DateTime'], 7);
+  const firstTime = parts[0].table[parts[0].parsed.rows![0]][maps[0][ti]];
+  const kind = firstTime instanceof Date ? 'date' : typeof firstTime === 'number' ? 'number' : 'text';
+  const start = parts[0].parsed.startSeconds;
+  const original = (x: TableCell) => (x instanceof Date ? timeText(x.getTime() / 1000, 'date') : x ?? '');
+  const out: TableCell[][] = [[...header, 'Original Time', 'Source File']];
+  samples.forEach((s, k) => {
+    const { part, sample } = origin[k];
+    const src = parts[part].table[parts[part].parsed.rows![sample]];
+    const row: TableCell[] = maps[part].map((c) => src[c] ?? null);
+    const at = start + s.t;
+    row[qi] = s.q;
+    row[ti] = kind === 'number' ? at / 86400 : timeText(at, kind);
+    row.push(original(src[maps[part][ti]]), parts[part].fileName);
+    out.push(row);
+  });
+  return out;
+}
 
 /** Channel order: numbers compared as numbers (01-2-2 before 01-2-10), case and spaces ignored. */
 export function compareChannels(a: string, b: string): number {
@@ -446,39 +571,101 @@ function stepLabelsFor(columns: MachineColumn[], reports: ConvertedReport[], c: 
 }
 
 /**
- * Converts all uploaded reports into one batch. Rows are sorted by channel (cell ID) and
+ * The uploaded files per cell; several cells, each split or not, can be uploaded together.
+ * - Channel names ("1-2-1_1", "1-2-1_2", "1-2-1(3)", "1-2-1"): every file of channel 1-2-1 is
+ *   one cell "1-2-1"; the suffix is the part number of a test split by a power cut.
+ * - Other names: a file named like another uploaded file plus a part suffix ("CELL-7(1)" next to
+ *   "CELL-7") belongs to that cell; without the plain file a suffixed name is a cell of its own, so
+ *   names such as "CELL_1" and "CELL_2" are never merged by mistake.
+ * Files whose names repeat exactly are not merged: each stays a row of its own and is reported as
+ * a duplicate. Groups keep the upload order.
+ */
+function cellGroups(inputs: ReportInput[]): Array<{ cellId: string; files: ReportInput[]; duplicate: boolean }> {
+  const counts = new Map<string, number>();
+  const plain = new Map<string, string>();
+  for (const inp of inputs) {
+    const id = cellIdFromFileName(inp.fileName);
+    counts.set(duplicateKey(id), (counts.get(duplicateKey(id)) ?? 0) + 1);
+    if (!plain.has(duplicateKey(id))) plain.set(duplicateKey(id), id);
+  }
+  const isDuplicate = (id: string) => (counts.get(duplicateKey(id)) ?? 0) > 1;
+  const groups: Array<{ cellId: string; files: ReportInput[]; duplicate: boolean }> = [];
+  const byOwner = new Map<string, { cellId: string; files: ReportInput[]; duplicate: boolean }>();
+  for (const inp of inputs) {
+    const id = cellIdFromFileName(inp.fileName);
+    const channel = channelBase(id);
+    const base = partBase(id);
+    const owner = isDuplicate(id)
+      ? id
+      : channel !== null
+        ? (plain.get(duplicateKey(channel)) ?? channel)
+        : base !== null && plain.has(duplicateKey(base)) && !isDuplicate(base)
+          ? plain.get(duplicateKey(base))!
+          : id;
+    if (isDuplicate(owner)) {
+      groups.push({ cellId: owner, files: [inp], duplicate: true });
+      continue;
+    }
+    const key = duplicateKey(owner);
+    if (!byOwner.has(key)) {
+      const g = { cellId: owner, files: [] as ReportInput[], duplicate: false };
+      byOwner.set(key, g);
+      groups.push(g);
+    }
+    byOwner.get(key)!.files.push(inp);
+  }
+  return groups;
+}
+
+/**
+ * Converts all uploaded reports into one batch. Files of a test split by a power cut are merged
+ * into one cell first (see cellGroups / mergeParts). Rows are sorted by channel (cell ID) and
  * `cell No.` is the position in that order (1-based).
  */
 export function convertBatch(inputs: ReportInput[], c: LfpConstants = LFP_CONSTANTS): BatchResult {
   const columns = machineColumns(c);
   const width = columns.length;
   const errorIndex = columns.findIndex((col) => col.name === 'ERROR');
-  const counts = new Map<string, number>();
-  for (const inp of inputs) {
-    const key = duplicateKey(cellIdFromFileName(inp.fileName));
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  // Stable sort: reports with the same channel keep their upload order.
-  const sorted = inputs
-    .map((inp, k) => ({ inp, k }))
-    .sort((a, b) => compareChannels(cellIdFromFileName(a.inp.fileName), cellIdFromFileName(b.inp.fileName)) || a.k - b.k);
-  const reports: ConvertedReport[] = sorted.map(({ inp }, idx) => {
-    const cellId = cellIdFromFileName(inp.fileName);
+  // Stable sort: cells with the same channel keep their upload order.
+  const sorted = cellGroups(inputs)
+    .map((g, k) => ({ g, k }))
+    .sort((a, b) => compareChannels(a.g.cellId, b.g.cellId) || a.k - b.k);
+  const reports: ConvertedReport[] = sorted.map(({ g }, idx) => {
+    const cellId = g.cellId;
     const cellNo = idx + 1;
+    const merged = g.files.length > 1;
+    let identity: Pick<ConvertedReport, 'cellId' | 'cellNo' | 'fileName' | 'parts'> = { cellId, cellNo, fileName: g.files[0].fileName };
     const fail = (reason: string, parsed?: ParsedReport): ConvertedReport => ({
-      cellId,
-      cellNo,
-      fileName: inp.fileName,
+      ...identity,
       error: reason,
       values: failedRow(cellId, cellNo, reason, width, errorIndex),
       parsed,
     });
+    if (merged) {
+      const names = g.files.map((f) => f.fileName);
+      identity = { ...identity, fileName: names.join(' + '), parts: names };
+      const unreadable = g.files.find((f) => f.readError !== undefined || !f.table);
+      if (unreadable) return fail(`File cannot be read: ${unreadable.fileName}: ${unreadable.readError ?? 'no data'}`);
+      const parts = g.files.map((f) => ({ fileName: f.fileName, parsed: parseReport(f.table!), table: f.table! }));
+      // listed in recorded order, which is the order the parts are joined in
+      const order = [...parts]
+        .sort((a, b) => (Number.isFinite(a.parsed.startSeconds) ? a.parsed.startSeconds : Infinity) - (Number.isFinite(b.parsed.startSeconds) ? b.parsed.startSeconds : Infinity))
+        .map((p) => p.fileName);
+      identity = { ...identity, fileName: order.join(' + '), parts: order };
+      const m = mergeParts(parts);
+      if (m.error) return fail(m.error, m.parsed);
+      // the merged test must be complete (all 5 steps, same checks as one file); no merged file otherwise
+      const reason = validate(m.parsed.samples, c);
+      if (reason) return fail(`Merged parts are still incomplete: ${reason}`, m.parsed);
+      return { ...identity, error: null, values: convertSamples(cellId, cellNo, m.parsed.samples, c), parsed: m.parsed, mergedTable: m.table };
+    }
+    const inp = g.files[0];
     if (inp.readError !== undefined || !inp.table) return fail(`File cannot be read: ${inp.readError ?? 'no data'}`);
     const parsed = parseReport(inp.table);
     const reason = validate(parsed.samples, c);
     if (reason) return fail(reason, parsed);
-    if ((counts.get(duplicateKey(cellId)) ?? 0) > 1) return fail('Duplicate cell ID: another report has the same file name', parsed);
-    return { cellId, cellNo, fileName: inp.fileName, error: null, values: convertSamples(cellId, cellNo, parsed.samples, c), parsed };
+    if (g.duplicate) return fail('Duplicate cell ID: another report has the same file name', parsed);
+    return { ...identity, error: null, values: convertSamples(cellId, cellNo, parsed.samples, c), parsed };
   });
   const ok = reports.filter((r) => r.error === null);
   const earliest = ok.reduce<ConvertedReport | null>((best, r) => (!best || r.parsed!.startSeconds < best.parsed!.startSeconds ? r : best), null);

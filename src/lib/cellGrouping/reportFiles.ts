@@ -43,19 +43,69 @@ export function readReportInputs(files: Array<{ name: string; data: Uint8Array }
   });
 }
 
+/** A merged raw file (lfpConvert mergeParts) as an .xlsx with one sheet. */
+export function mergedFileXlsx(table: TableCell[][]): Uint8Array {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(table), 'merged');
+  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+}
+
 /**
- * The raw per-cell files exactly as uploaded, as one ZIP (saved with the run in the grading
- * history). Files keep their names; a repeated name gets " (2)", " (3)", ... before the extension.
+ * One merged raw file per cell whose test was split by a power cut, named "<cell ID>.xlsx" so
+ * that uploading it instead of the parts gives the same cell and the same converted row.
  */
-export function rawFilesZip(files: Array<{ name: string; data: Uint8Array }>): Uint8Array {
+export function mergedFiles(batch: BatchResult): Array<{ name: string; data: Uint8Array; parts: string[] }> {
+  return batch.reports
+    .filter((r) => r.mergedTable && r.parts)
+    .map((r) => ({ name: `${r.cellId}.xlsx`, data: mergedFileXlsx(r.mergedTable!), parts: r.parts! }));
+}
+
+/** "merged/README.txt": which parts were joined into each merged file, in recorded order. */
+function mergedReadme(merged: Array<{ name: string; parts: string[] }>): Uint8Array {
+  const lines = [
+    'Merged raw files: tests split by a power cut, one file per cell.',
+    'Parts are joined in recorded order; the capacity of the interrupted step is added up and the',
+    'power-off time is left out of Time ("Original Time" keeps the recorded time, "Source File" the part).',
+    '',
+    ...merged.map((m) => `${m.name}: ${m.parts.join(' -> ')}`),
+    '',
+  ];
+  return new TextEncoder().encode(lines.join('\r\n'));
+}
+
+/** Adds a file under its own name; a repeated name gets " (2)", " (3)", ... before the extension. */
+function addEntry(entries: Record<string, Uint8Array>, folder: string, name: string, data: Uint8Array) {
+  const base = (name.split(/[\\/]/).pop() || 'file').trim() || 'file';
+  let entry = folder + base;
+  for (let n = 2; entry in entries; n++) entry = folder + base.replace(/(\.[^.]*)?$/, (ext) => ` (${n})${ext}`);
+  entries[entry] = data;
+}
+
+/**
+ * The raw per-cell files exactly as uploaded (including every part of a split test), as one ZIP
+ * saved with the run in the grading history. When tests were merged, the merged raw files are
+ * added under "merged/" with a README listing their parts.
+ */
+export function rawFilesZip(
+  files: Array<{ name: string; data: Uint8Array }>,
+  merged: Array<{ name: string; data: Uint8Array; parts: string[] }> = [],
+): Uint8Array {
   const entries: Record<string, Uint8Array> = {};
-  for (const { name, data } of files) {
-    const base = (name.split(/[\\/]/).pop() || 'file').trim() || 'file';
-    let entry = base;
-    for (let n = 2; entry in entries; n++) entry = base.replace(/(\.[^.]*)?$/, (ext) => ` (${n})${ext}`);
-    entries[entry] = data;
+  for (const { name, data } of files) addEntry(entries, '', name, data);
+  if (merged.length) {
+    for (const { name, data } of merged) addEntry(entries, 'merged/', name, data);
+    entries['merged/README.txt'] = mergedReadme(merged);
   }
   // .xlsx is already compressed; the old binary .xls and .csv compress well.
+  return zipSync(entries, { level: 6 });
+}
+
+/** Only the merged raw files (with the README), for downloading from the result. */
+export function mergedFilesZip(batch: BatchResult): Uint8Array {
+  const merged = mergedFiles(batch);
+  const entries: Record<string, Uint8Array> = {};
+  for (const { name, data } of merged) addEntry(entries, '', name, data);
+  entries['README.txt'] = mergedReadme(merged);
   return zipSync(entries, { level: 6 });
 }
 
