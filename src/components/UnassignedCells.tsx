@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   actionableCells,
   applySuggestions,
+  latestCellRows,
   CHEMISTRIES,
   compareRules,
   parseRules,
@@ -11,7 +12,7 @@ import {
   unassignedCells,
   validateProposal,
 } from '../lib/cellGrouping/index.ts';
-import type { PublishedRules, RulesComparison, RunReport, Suggestion, UnassignedCell, ValidationReport } from '../lib/cellGrouping/index.ts';
+import type { DuplicateCell, PublishedRules, RulesComparison, RunReport, Suggestion, UnassignedCell, ValidationReport } from '../lib/cellGrouping/index.ts';
 import type { GradingRun } from './GradingHistory';
 import iconChevronDown from '../assets/genie/icon-chevron-down.svg';
 
@@ -158,6 +159,9 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
   const [notice, setNotice] = useState('');
   const [runs, setRuns] = useState<RunReport[] | null>(null);
   const [skipped, setSkipped] = useState<string[]>([]);
+  /** Copies of cells graded again in a newer run (same test data): counted once, in the newest run. */
+  const [duplicates, setDuplicates] = useState<DuplicateCell[]>([]);
+  const [runsRead, setRunsRead] = useState(0);
   const [published, setPublished] = useState<PublishedMap>({});
   // workbench
   const [workChem, setWorkChem] = useState('');
@@ -226,7 +230,10 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
       await Promise.all(Array.from({ length: PARALLEL }, worker));
       const order = new Map(picked.map((r, i) => [r.id, i]));
       loaded.sort((a, b) => order.get(a.runId)! - order.get(b.runId)!);
-      setRuns(loaded);
+      const latest = latestCellRows(loaded);
+      setRuns(latest.runs);
+      setDuplicates(latest.duplicates);
+      setRunsRead(loaded.length);
       setSkipped(failed);
       const first = loaded.find((r) => rules[r.chemistry]);
       setWorkChem((c) => (c && loaded.some((r) => r.chemistry === c) ? c : chemistry || first?.chemistry || ''));
@@ -276,7 +283,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
     const moved = report.changed.length;
     const ok = window.confirm(
       `Approve and publish these ${workChem} rules? They go live: every grading uses them from now on.\n\n` +
-        `${report.nowGrouped.length} NA cell(s) get a group, ${report.stillUnassigned.length} stay NA` +
+        `${report.nowGrouped.length} NA cell(s) get a group, ${report.stillUnassigned.length} with complete data stay NA` +
         (moved ? `, and ${moved} already graded cell(s) would change group if graded again.` : '.') +
         `\n\nRuns with NA cells can then be rerun from Group cells; cells that already have a group keep it.`,
     );
@@ -342,8 +349,8 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
         </div>
         {runs && (
           <div className="flex flex-wrap gap-4">
-            <Kpi label="Runs read" value={runs.length} caption={skipped.length ? `${skipped.length} report(s) could not be read` : ''} />
-            <Kpi label="Cells checked" value={cellsChecked} />
+            <Kpi label="Runs read" value={runsRead} caption={skipped.length ? `${skipped.length} report(s) could not be read` : ''} />
+            <Kpi label="Cells checked" value={cellsChecked} caption={duplicates.length ? `${duplicates.length} repeat grading(s) counted once` : 'Each cell once'} />
             <Kpi
               label="NA cells to group"
               value={cells.length}
@@ -355,6 +362,18 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
         )}
         {notice && <div className="rounded-genie-md border border-genie-info-border bg-genie-info-bg px-4 py-3 text-sm text-genie-info-fg">{notice}</div>}
         {error && <div className="rounded-genie-md border border-[rgba(211,47,47,0.4)] bg-[#fdecec] px-4 py-3 text-sm text-genie-danger-fg">{error}</div>}
+        {duplicates.length > 0 && (
+          <details className="text-xs text-genie-text-secondary">
+            <summary>Cells graded more than once, counted once in their newest run ({duplicates.length} older copies skipped)</summary>
+            <ul className="mt-1 list-disc pl-5">
+              {duplicates.map((d, i) => (
+                <li key={i}>
+                  <span className="font-medium text-genie-text">{d.cellId}</span> in {d.runLabel}: same test data as in {d.keptIn}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {skipped.length > 0 && (
           <details className="text-xs text-genie-text-secondary">
             <summary>Reports that could not be read ({skipped.length})</summary>
@@ -568,7 +587,8 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
                   <p className="text-sm">
                     Checked {report.cellsChecked} cell(s):{' '}
                     <span className="text-genie-success-fg">{report.nowGrouped.length} NA cell(s) get a group</span>,{' '}
-                    {report.stillUnassigned.length} stay NA,{' '}
+                    {report.stillUnassigned.length} with complete data stay NA
+                    {report.incomplete.length > 0 && <span className="text-genie-text-secondary"> (+ {report.incomplete.length} incomplete, ignored)</span>},{' '}
                     <span className={report.changed.length ? 'font-medium text-genie-danger-fg' : ''}>
                       {report.changed.length} already graded cell(s) would change group
                     </span>
@@ -599,7 +619,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
                   <div className="flex flex-wrap gap-4">
                     <ChangeList title="Would change group" tone="danger" items={report.changed} />
                     <ChangeList title="NA → grouped" tone="success" items={report.nowGrouped} />
-                    <ChangeList title="Still NA" tone="muted" items={report.stillUnassigned} />
+                    <ChangeList title="Still NA (complete data)" tone="muted" items={report.stillUnassigned} />
                   </div>
                 </>
               )}

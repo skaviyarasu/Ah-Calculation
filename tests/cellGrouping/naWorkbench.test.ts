@@ -8,6 +8,7 @@ import { parseRules } from '../../src/lib/cellGrouping/loadRules.ts';
 import {
   actionableCells,
   adjacentBand,
+  latestCellRows,
   applySuggestions,
   nearestGroups,
   suggestSteps,
@@ -189,7 +190,9 @@ describe('validation before publishing', () => {
     expect(v.errors).toEqual([]);
     expect(v.cellsChecked).toBe(7);
     expect(v.nowGrouped).toEqual([{ runLabel: run.label, cellId: '0-8-17', from: '', to: 'NEW-1' }]);
-    expect(v.stillUnassigned.map((c) => c.cellId)).toEqual(['0-8-18', '0-8-21']);
+    // 0-8-21 has complete data; 0-8-18 (missing steps) is listed apart as incomplete
+    expect(v.stillUnassigned.map((c) => c.cellId)).toEqual(['0-8-21']);
+    expect(v.incomplete.map((c) => c.cellId)).toEqual(['0-8-18']);
     expect(v.changed).toEqual([]);
     expect(v.groupCounts).toEqual({ C3R2: 1, C3R1: 1, C2R1: 2, 'NEW-1': 1, NA: 2 });
   });
@@ -211,5 +214,36 @@ describe('validation before publishing', () => {
     const bad = RULES.replace('  - name: "NA"', '  - name: "R"\n    filter: { col: "3Capacity(mAh)", between: ["x", 1] }\n    then: { action: keep }\n  - name: "NA"');
     const v = validateProposal(bad, [run], rules);
     expect(v.runErrors).toEqual([{ runLabel: run.label, message: expect.stringContaining("could not convert string to float: 'x'") }]);
+  });
+});
+
+describe('cells graded more than once', () => {
+  const older: RunReport = { ...run, runId: 'r0', label: 'older run' };
+  // the same channel in another batch has other test data: a different cell
+  const otherBatch: RunReport = {
+    ...run,
+    runId: 'r-1',
+    label: 'other batch',
+    frame: frameFromCsvText(REPORT.replace('0-8-17,4,15097.0,5.6', '0-8-17,4,15011.0,5.9')),
+  };
+
+  it('counts each cell once, in its newest run', () => {
+    const { runs, duplicates } = latestCellRows([run, older]);
+    expect(runs.map((r) => r.runId)).toEqual(['r1']);
+    expect(duplicates).toHaveLength(7);
+    expect(duplicates[3]).toEqual({ cellId: '0-8-17', runLabel: 'older run', keptIn: run.label });
+    expect(unassignedCells(runs, rules).map((c) => c.cellId)).toEqual(['0-8-17', '0-8-18', '0-8-21']);
+  });
+
+  it('keeps the same channel when its test data differs (another batch)', () => {
+    const { runs, duplicates } = latestCellRows([run, otherBatch]);
+    expect(duplicates.map((d) => d.cellId)).toEqual(['0-8-1', '0-8-2', '0-8-8', '0-8-18', '0-8-19', '0-8-21']);
+    expect(runs[1].frame.length).toBe(1);
+    expect(runs[1].frame.data.Number).toEqual(['0-8-17']);
+  });
+
+  it('ignores the position column "cell No." when comparing', () => {
+    const moved: RunReport = { ...run, runId: 'r0', label: 'moved', frame: frameFromCsvText(REPORT.replace('0-8-17,4,', '0-8-17,9,')) };
+    expect(latestCellRows([run, moved]).runs).toHaveLength(1);
   });
 });

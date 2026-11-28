@@ -206,6 +206,62 @@ export function ruleColumns(rules: RuleSet): string[] {
   return [...cols];
 }
 
+/** Why a row's data is incomplete: its ERROR (not converted) and the rule columns without a value. */
+export function rowCompleteness(frame: Frame, row: number, cols: string[]): { error: string; missing: string[]; complete: boolean } {
+  const raw = frame.columns.includes('ERROR') ? text(frame.data.ERROR[row]) : '';
+  const error = raw === '---' ? '' : raw;
+  const missing = cols.filter((c) => !frame.columns.includes(c) || text(frame.data[c][row]).trim() === '');
+  return { error, missing, complete: error === '' && missing.length === 0 };
+}
+
+/** The frame with only the given rows, in that order. */
+function selectRows(frame: Frame, rows: number[]): Frame {
+  const data: Frame['data'] = {};
+  for (const c of frame.columns) data[c] = rows.map((r) => frame.data[c][r]);
+  return { columns: frame.columns, data, kinds: frame.kinds, length: rows.length };
+}
+
+export interface DuplicateCell {
+  cellId: string;
+  /** The older run whose copy is skipped. */
+  runLabel: string;
+  /** The newest run with the same cell and test data, which is kept. */
+  keptIn: string;
+}
+
+/**
+ * Counts each cell once when the same batch was graded more than once: a row is skipped when a
+ * newer run (runs are given newest first) has a row with the same chemistry, cell ID and test data
+ * (every column except the group and the position "cell No."). The same channel in another batch
+ * has other test data, so it is kept. Runs left without rows are dropped.
+ */
+export function latestCellRows(runs: RunReport[]): { runs: RunReport[]; duplicates: DuplicateCell[] } {
+  const seen = new Map<string, string>();
+  const duplicates: DuplicateCell[] = [];
+  const kept: RunReport[] = [];
+  for (const run of runs) {
+    const idCol = cellIdColumn(run.frame);
+    if (!idCol) {
+      kept.push(run);
+      continue;
+    }
+    const cols = run.frame.columns.filter((c) => c !== run.groupCol && c !== 'cell No.');
+    const rows: number[] = [];
+    for (let row = 0; row < run.frame.length; row++) {
+      const key = `${run.chemistry}\u0000${cols.map((c) => `${c}=${text(run.frame.data[c][row])}`).join('\u0000')}`;
+      const newer = seen.get(key);
+      if (newer !== undefined) duplicates.push({ cellId: text(run.frame.data[idCol][row]), runLabel: run.label, keptIn: newer });
+      else {
+        seen.set(key, run.label);
+        rows.push(row);
+      }
+    }
+    if (rows.length === run.frame.length) kept.push(run);
+    else if (rows.length) kept.push({ ...run, frame: selectRows(run.frame, rows) });
+  }
+  return { runs: kept, duplicates };
+}
+
 /** NA cells to write rules for: complete data and no group identified yet. */
 export function actionableCells(cells: UnassignedCell[]): UnassignedCell[] {
   return cells.filter((c) => c.complete && !c.identifiedGroup);
@@ -225,10 +281,7 @@ export function unassignedCells(runs: RunReport[], rules: RuleSet): UnassignedCe
       current = null; // the rules cannot group this report (e.g. a column is missing): nothing identified
     }
     return unassignedRows(run.frame, run.groupCol, rules).map((row) => {
-      const raw = frame.columns.includes('ERROR') ? text(frame.data.ERROR[row]) : '';
-      const error = raw === '---' ? '' : raw;
-      const missing = cols.filter((c) => !frame.columns.includes(c) || text(frame.data[c][row]).trim() === '');
-      const complete = error === '' && missing.length === 0;
+      const { error, missing, complete } = rowCompleteness(frame, row, cols);
       return {
         missing,
         complete,
@@ -414,8 +467,10 @@ export interface ValidationReport {
   cellsChecked: number;
   /** NA cells that the proposed rules group. */
   nowGrouped: CellChange[];
-  /** Cells that stay NA. */
+  /** Cells with complete data that stay NA. */
   stillUnassigned: CellChange[];
+  /** NA cells with incomplete data (not converted or a value missing) that stay NA: ignored. */
+  incomplete: CellChange[];
   /** Cells with a group whose group would change (including to NA): check these before publishing. */
   changed: CellChange[];
   /** Cells per group under the proposed rules. */
@@ -441,11 +496,13 @@ export function validateProposal(yamlText: string, runs: RunReport[], currentRul
     cellsChecked: 0,
     nowGrouped: [],
     stillUnassigned: [],
+    incomplete: [],
     changed: [],
     groupCounts: {},
   };
   if (report.errors.length || !parsed.rules) return report;
   const oldCatchAll = catchAllNames(currentRules);
+  const cols = ruleColumns(currentRules);
   for (const run of runs) {
     const idCol = cellIdColumn(run.frame);
     let result: GroupingResult;
@@ -464,7 +521,8 @@ export function validateProposal(yamlText: string, runs: RunReport[], currentRul
       report.cellsChecked++;
       const key = to || 'NA';
       report.groupCounts[key] = (report.groupCounts[key] ?? 0) + 1;
-      if (from === '') (to ? report.nowGrouped : report.stillUnassigned).push(change);
+      if (from === '' && to) report.nowGrouped.push(change);
+      else if (from === '') (rowCompleteness(run.frame, row, cols).complete ? report.stillUnassigned : report.incomplete).push(change);
       else if (to !== from) report.changed.push(change);
     }
   }
