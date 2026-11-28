@@ -31,3 +31,14 @@ export { CHEMISTRIES, missingRuleColumns } from './chemistry.ts';
 export type { Chemistry, PublishedRules } from './chemistry.ts';
 export { PyFloat } from './types.ts';
 export type * from './types.ts';
+export {
+  unassignedCells,
+  unassignedRows,
+  nearestGroups,
+  suggestSteps,
+  applySuggestions,
+  validateProposal,
+  adjacentBand,
+  conditionText,
+} from './naWorkbench.ts';
+export type { RunReport, UnassignedCell, NearestGroup, ConditionCheck, Suggestion, ValidationReport, CellChange } from './naWorkbench.ts';

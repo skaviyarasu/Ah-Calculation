@@ -2303,6 +2303,13 @@ export const cellGrouping = {
     return data.signedUrl
   },
 
+  /** A saved run file read as text, e.g. the grouped report CSV (admins only). */
+  async runFileText(path) {
+    const { data, error } = await supabase.storage.from('cell-grouping-runs').download(path)
+    if (error) throw new Error(`Could not read ${path}: ${error.message}`)
+    return await data.text()
+  },
+
   /** Publishes a new version of the rules for one chemistry (admin only; enforced by RLS). */
   async publishRules(chemistry, fileName, yamlText) {
     const user = await auth.getCurrentUser()
