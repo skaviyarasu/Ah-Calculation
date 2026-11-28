@@ -36,6 +36,7 @@ export {
   unassignedRows,
   actionableCells,
   latestCellRows,
+  ruleColumns,
   nearestGroups,
   suggestSteps,
   applySuggestions,
