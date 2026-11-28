@@ -2171,7 +2171,8 @@ export const cellGrouping = {
    * run = { chemistry, rulesId, rulesFileName, inputKind, inputFileName, inputFileCount, inputFileNames,
    *         cellsRead, cellsRemoved, cellsNotConverted, summary: { cellsGrouped, groupCounts, unassignedCount, rejectedCount },
    *         inputFile: { name, data: Uint8Array|string, type }, reportFile: { name, data: string, type },
-   *         rawInputFile?: { name, data: Uint8Array, type } }   (LFP: the raw per-cell files as one ZIP; migration 24)
+   *         rawInputFile?: { name, data: Uint8Array, type },   (LFP: the raw per-cell files as one ZIP; migration 24)
+   *         rerunOf?: string }   (the run whose NA cells this reruns; no input file then; migration 25)
    */
   async recordRun(run) {
     const user = await auth.getCurrentUser()
@@ -2210,11 +2211,16 @@ export const cellGrouping = {
       rejected_count: run.summary.rejectedCount,
       input_path: inputPath,
       report_path: reportPath,
-      raw_input_path: rawPath
+      raw_input_path: rawPath,
+      // a rerun of the NA cells of an earlier run (migration 25); the database keeps that run's input
+      ...(run.rerunOf ? { rerun_of: run.rerunOf } : {})
     }
     // Checked every time (permission + office network + approved device); the files can only be
     // uploaded for a run recorded this way.
     const { error } = await supabase.rpc('cell_grouping_record_run', { p_device_key: deviceKey(), p_run: row })
+    if (error && functionMissing(error) && run.rerunOf) {
+      throw new Error('Reruns need database/25_cell_grouping_na_reruns.sql in Supabase.')
+    }
     if (error && functionMissing(error)) {
       // migration 22 not installed: files first, then the row (migration 21 policies; no raw files)
       await upload('input', run.inputFile)
@@ -2303,11 +2309,35 @@ export const cellGrouping = {
     return data.signedUrl
   },
 
-  /** A saved run file read as text, e.g. the grouped report CSV (admins only). */
+  /** A saved run file read as text, e.g. the grouped report CSV (admins; processors: the report of a run to rerun). */
   async runFileText(path) {
     const { data, error } = await supabase.storage.from('cell-grouping-runs').download(path)
     if (error) throw new Error(`Could not read ${path}: ${error.message}`)
     return await data.text()
+  },
+
+  /**
+   * Runs that still have NA cells and were graded with older rules than the newest published ones
+   * of their chemistry, not rerun yet (database/25_cell_grouping_na_reruns.sql). Operators and admins;
+   * checked every time like every Group cells call. null when migration 25 is not installed.
+   */
+  async listRerunCandidates() {
+    const { data, error } = await supabase.rpc('cell_grouping_rerun_candidates', { p_device_key: deviceKey() })
+    if (error && functionMissing(error)) return null
+    if (error) throw accessError(error)
+    return data || []
+  },
+
+  /** One published rules version by id (the rules a run used), or null. */
+  async getRulesVersion(id) {
+    if (!id) return null
+    const { data, error } = await supabase
+      .from('cell_grouping_rules')
+      .select('id, chemistry, file_name, yaml_text, uploaded_by_email, uploaded_at')
+      .eq('id', id)
+      .maybeSingle()
+    if (error) throw error
+    return data
   },
 
   /** Publishes a new version of the rules for one chemistry (admin only; enforced by RLS). */

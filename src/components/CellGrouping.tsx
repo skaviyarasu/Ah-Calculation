@@ -42,6 +42,8 @@ import type {
   Workbook,
 } from '../lib/cellGrouping/index.ts';
 
+import NaReruns from './NaReruns';
+import type { NaRerunsApi } from './NaReruns';
 import iconChevronDown from '../assets/genie/icon-chevron-down.svg';
 import statusDotInfo from '../assets/genie/status-dot-info.svg';
 import statusDotSuccess from '../assets/genie/status-dot-success.svg';
@@ -64,6 +66,8 @@ export interface CellGroupingProps {
   officeNetwork?: OfficeNetworkApi;
   /** Saves each successful run in the grading history (database/21_cell_grouping_runs.sql). Optional. */
   recordRun?: (run: RunRecord) => Promise<unknown>;
+  /** Runs with NA cells to rerun after new rules are published (database/25_cell_grouping_na_reruns.sql). Optional. */
+  reruns?: NaRerunsApi;
 }
 
 /** One successful run, as saved in the grading history. */
@@ -79,10 +83,13 @@ export interface RunRecord {
   cellsRemoved: number;
   cellsNotConverted: number;
   summary: RunSummary;
-  inputFile: { name: string; data: Uint8Array | string; type: string };
+  /** Missing for a rerun: it keeps the original run's input. */
+  inputFile?: { name: string; data: Uint8Array | string; type: string };
   reportFile: { name: string; data: string; type: string };
   /** LFP per-cell reports: the raw per-channel files exactly as uploaded, as one ZIP. */
   rawInputFile?: { name: string; data: Uint8Array; type: string };
+  /** A rerun of the NA cells of this earlier run (id). */
+  rerunOf?: string;
 }
 
 export interface OfficeStatus {
@@ -1679,7 +1686,7 @@ function DevicesCard({ api, status, onChanged }: { api: DeviceApi; status: Devic
   );
 }
 
-export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules, officeNetwork, recordRun }: CellGroupingProps) {
+export default function CellGrouping({ canManageRules, canProcessReports, loadRules, publishRules, officeNetwork, recordRun, reruns }: CellGroupingProps) {
   const [published, setPublished] = useState<PublishedMap>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -1775,7 +1782,12 @@ export default function CellGrouping({ canManageRules, canProcessReports, loadRu
       ) : (
         !loading &&
         !loadError &&
-        canProcessReports && <ReportProcessor published={published} advanced={canManageRules} reload={reload} recordRun={recordRun} />
+        canProcessReports && (
+          <>
+            {reruns && <NaReruns api={reruns} published={published} recordRun={recordRun} />}
+            <ReportProcessor published={published} advanced={canManageRules} reload={reload} recordRun={recordRun} />
+          </>
+        )
       )}
 
       {!loading && !loadError && canManageRules && (

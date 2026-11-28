@@ -42,3 +42,5 @@ export {
   conditionText,
 } from './naWorkbench.ts';
 export type { RunReport, UnassignedCell, NearestGroup, ConditionCheck, Suggestion, ValidationReport, CellChange } from './naWorkbench.ts';
+export { compareRules, rerunUnassigned, reportGroupColumn, stepLines } from './rerun.ts';
+export type { RulesComparison, StepChange, RerunResult } from './rerun.ts';

@@ -29,6 +29,13 @@ const officeNetwork = {
   },
 };
 
+// Runs with NA cells to rerun after new rules go live (database/25_cell_grouping_na_reruns.sql)
+const naReruns = {
+  listCandidates: cellGrouping.listRerunCandidates,
+  runFileText: cellGrouping.runFileText,
+  getRulesVersion: cellGrouping.getRulesVersion,
+};
+
 function MainApp() {
   const [currentView, setCurrentView] = useState("ah-balancer");
   const [commandOpen, setCommandOpen] = useState(false);
@@ -221,6 +228,7 @@ function MainApp() {
                 publishRules={cellGrouping.publishRules}
                 officeNetwork={officeNetwork}
                 recordRun={cellGrouping.recordRun}
+                reruns={naReruns}
               />
             )}
             {currentView === "grading-history" && isAdmin && (
