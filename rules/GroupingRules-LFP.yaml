@@ -1,0 +1,178 @@
+# Preprocessing of raw grading-machine Excel files (used by the Ah-Calculation app;
+# ignored by categorize_csv.py). Keep the quotes: "3SD (%)  " has 2 trailing spaces.
+preprocess:
+  skip_rows: 3
+  header:
+    - "Number"
+    - "cell No."
+    - "1Open Voltage(mV)"
+    - "1Ave_Voltage(mV)"
+    - "1End Voltage(mV)"
+    - "1Time(minute)"
+    - "1Capacity(mAh)"
+    - "1Energy(mWh)"
+    - "1End Current(mA)"
+    - "1CC_Time(min)"
+    - "1CC_Capacity(mAh)"
+    - "1CC_Ratio(%)"
+    - "2Open Voltage(mV)"
+    - "2Ave_Voltage(mV)"
+    - "2End Voltage(mV)"
+    - "2Time(minute)"
+    - "3Open Voltage(mV)"
+    - "3Ave_Voltage(mV)"
+    - "3End Voltage(mV)"
+    - "3Time(minute)"
+    - "3Capacity(mAh)"
+    - "3Energy(mWh)"
+    - "3End Current(mA)"
+    - "3Capacity Spoilage(mAh)"
+    - "3Discharge Efficiency(%)"
+    - "3Loss Rate(%)"
+    - "3DC_Ratio(%)"
+    - "3SD (%)  "
+    - "3Mid_V(mV)"
+    - "#3600min(mV)"
+    - "#3600min(mAh)"
+    - "#3600min(%)"
+    - "#3500min(mV)"
+    - "#3500min(mAh)"
+    - "#3500min(%)"
+    - "#3400min(mV)"
+    - "#3400min(mAh)"
+    - "#3400min(%)"
+    - "#3300min(mV)"
+    - "#3300min(mAh)"
+    - "#3300min(%)"
+    - "#3000min(mV)"
+    - "#3000min(mAh)"
+    - "#3000min(%)"
+    - "4Open Voltage(mV)"
+    - "4Ave_Voltage(mV)"
+    - "4End Voltage(mV)"
+    - "4Time(minute)"
+    - "5Open Voltage(mV)"
+    - "5Ave_Voltage(mV)"
+    - "5End Voltage(mV)"
+    - "5Time(minute)"
+    - "5Capacity(mAh)"
+    - "5Energy(mWh)"
+    - "5End Current(mA)"
+    - "5CC_Time(min)"
+    - "5CC_Capacity(mAh)"
+    - "5CC_Ratio(%)"
+    - "ERROR"
+    # LFP extras written by the per-cell report conversion
+    - "4Fast_R(mOhm)"
+    - "CC_Ratio_Corr(%)"
+    - "5SOC_set(%)"
+  drop_rows:
+    - { col: "5CC_Ratio(%)", op: "==", value: "***" }
+
+# ---------------------------------------------------------------------------
+# LFP grouping rules with NMC-style group codes (two letters).
+#   1st letter = capacity band, 3Capacity(mAh):
+#     A = C1 14800 - 14949.99    B = C2 14950 - 15099.99    C = C3 15100 - 15249.99
+#   2nd letter = resistance band, 4Fast_R(mOhm):
+#     A = R1 0 - 4.5             B = R2 4.51 - 5.5          C = R3 5.51 - 6.5 (new)
+#   Every group also needs CC_Ratio_Corr(%) 98 - 100.
+#
+# Old (provisional C/R names) -> new code, for relabelling cells graded before this change:
+#   C1R1 -> AA    C1R2 -> AB    (C1R3 -> AC, new)
+#   C2R1 -> BA    C2R2 -> BB    (C2R3 -> BC, new)
+#   C3R1 -> CA    C3R2 -> CB    (C3R3 -> CC, new)
+#   NA   -> NA
+# Cells graded NA before this change only because 4Fast_R was 5.51 - 6.5 mOhm now get AC / BC / CC;
+# their old reports keep NA (regrade them to get the new code).
+#
+# NA = not graded: the per-cell test could not be converted (e.g. "Missing step ...", an
+# incomplete test), or a value is outside every band above. Steps run in order; first match wins.
+# ---------------------------------------------------------------------------
+global:
+  default_action: keep_unmatched
+steps:
+  - name: "AA"   # C1R1
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14800, 14949.99] }
+        - { col: "4Fast_R(mOhm)",    between: [0, 4.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "AB"   # C1R2
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14800, 14949.99] }
+        - { col: "4Fast_R(mOhm)",    between: [4.51, 5.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "AC"   # C1R3
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14800, 14949.99] }
+        - { col: "4Fast_R(mOhm)",    between: [5.51, 6.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "BA"   # C2R1
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14950, 15099.99] }
+        - { col: "4Fast_R(mOhm)",    between: [0, 4.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "BB"   # C2R2
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14950, 15099.99] }
+        - { col: "4Fast_R(mOhm)",    between: [4.51, 5.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "BC"   # C2R3
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [14950, 15099.99] }
+        - { col: "4Fast_R(mOhm)",    between: [5.51, 6.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "CA"   # C3R1
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [15100, 15249.99] }
+        - { col: "4Fast_R(mOhm)",    between: [0, 4.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "CB"   # C3R2
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [15100, 15249.99] }
+        - { col: "4Fast_R(mOhm)",    between: [4.51, 5.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "CC"   # C3R3
+    filter:
+      all:
+        - { col: "3Capacity(mAh)",   between: [15100, 15249.99] }
+        - { col: "4Fast_R(mOhm)",    between: [5.51, 6.5] }
+        - { col: "CC_Ratio_Corr(%)", between: [98, 100] }
+    then:
+      action: keep
+
+  - name: "NA"
+    # no filter => every cell not grouped above (once: true)
+    then:
+      action: keep

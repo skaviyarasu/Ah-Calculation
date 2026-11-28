@@ -1,0 +1,11 @@
+Old group,New group,Capacity band (3Capacity mAh),Resistance band (4Fast_R mOhm),Note
+C1R1,AA,C1 14800 - 14949.99,R1 0 - 4.5,
+C1R2,AB,C1 14800 - 14949.99,R2 4.51 - 5.5,
+(none; was NA),AC,C1 14800 - 14949.99,R3 5.51 - 6.5,new band R3
+C2R1,BA,C2 14950 - 15099.99,R1 0 - 4.5,
+C2R2,BB,C2 14950 - 15099.99,R2 4.51 - 5.5,
+(none; was NA),BC,C2 14950 - 15099.99,R3 5.51 - 6.5,new band R3
+C3R1,CA,C3 15100 - 15249.99,R1 0 - 4.5,
+C3R2,CB,C3 15100 - 15249.99,R2 4.51 - 5.5,
+(none; was NA),CC,C3 15100 - 15249.99,R3 5.51 - 6.5,new band R3
+NA,NA,-,-,not graded: incomplete / not converted test or outside every band

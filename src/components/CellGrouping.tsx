@@ -18,6 +18,8 @@ import {
   preprocessExcel,
   preprocessSheetRows,
   PyFloat,
+  mergedFiles,
+  mergedFilesZip,
   rawFilesZip,
   readCsv,
   readReportInputs,
@@ -685,8 +687,9 @@ function ReportProcessor({
           rulesFileName: latest.file_name,
           inputKind: 'per_cell_reports',
           inputFileName: dataName,
-          inputFileCount: batch.reports.length,
-          inputFileNames: batch.reports.map((r) => r.fileName),
+          // files as uploaded; a test split by a power cut is several files but one cell
+          inputFileCount: perCell.length,
+          inputFileNames: perCell.map((r) => r.fileName),
           cellsRead: batch.reports.length,
           cellsRemoved: out.droppedRows,
           cellsNotConverted: batch.failed,
@@ -694,7 +697,10 @@ function ReportProcessor({
           // the converted batch (machine layout) that was grouped, plus the raw per-channel files as uploaded
           inputFile: { name: `${batchStem}.xlsx`, data: batchToXlsx(batch), type: XLSX_MIME },
           reportFile: { name: `${batchStem}_${chemistry}_categorized.csv`, data: resultToCsv(grouped), type: 'text/csv' },
-          rawInputFile: perCellRaw ? { name: `${batchStem}_raw.zip`, data: rawFilesZip(perCellRaw), type: 'application/zip' } : undefined,
+          // every uploaded file (including the broken parts of a split test) + the merged raw files under merged/
+          rawInputFile: perCellRaw
+            ? { name: `${batchStem}_raw.zip`, data: rawFilesZip(perCellRaw, mergedFiles(batch)), type: 'application/zip' }
+            : undefined,
         });
         return;
       }
@@ -765,6 +771,10 @@ function ReportProcessor({
   const exportBatchCsv = () => {
     if (resultInfo?.conversion)
       downloadBytes(batchToCsv(resultInfo.conversion.batch, resultInfo.conversion.names), `${stem}.csv`, 'text/csv;charset=utf-8');
+  };
+  /** Merged raw files of the tests split by a power cut (one per cell, all 5 steps), with a README. */
+  const exportMergedRaw = () => {
+    if (resultInfo?.conversion) downloadBytes(mergedFilesZip(resultInfo.conversion.batch), `${stem}_merged_raw.zip`, 'application/zip');
   };
   const exportExcel = () => {
     if (!result || !resultInfo) return;
@@ -928,7 +938,7 @@ function ReportProcessor({
                 </span>
                 <span className="text-xs">
                   {!chem || chem.perCellReports
-                    ? `One machine export (.xlsx / .xls), or all ${chem?.label ?? perCellLabel} per-cell reports at once (Ctrl+A / Shift+click)`
+                    ? `One machine export (.xlsx / .xls), or all ${chem?.label ?? perCellLabel} per-cell reports at once (Ctrl+A / Shift+click). A test split by a power cut: include every part of every cell, e.g. 1-2-1_1.xls, 1-2-1_2.xls, 1-2-2_1.xls, 1-2-2_2.xls; the parts of each channel are merged into one cell.`
                     : advanced
                       ? '.xlsx / .xls (.csv for testing)'
                       : '.xlsx / .xls'}
@@ -1017,7 +1027,13 @@ function ReportProcessor({
             <div className="flex flex-col gap-3 rounded-genie-md bg-genie-muted p-4 leading-[1.4]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-genie-text">
-                  <span className="font-medium">Per-cell reports:</span> {resultInfo.conversion.batch.reports.length} read ·{' '}
+                  <span className="font-medium">Per-cell reports:</span>{' '}
+                  {(() => {
+                    const files = resultInfo.conversion.batch.reports.reduce((n, r) => n + (r.parts?.length ?? 1), 0);
+                    const cells = resultInfo.conversion.batch.reports.length;
+                    return files === cells ? `${cells} read` : `${files} files → ${cells} cells`;
+                  })()}{' '}
+                  ·{' '}
                   <span className="text-genie-success-fg">{resultInfo.conversion.batch.converted} converted</span> ·{' '}
                   <span className={resultInfo.conversion.batch.failed ? 'text-genie-danger-fg' : ''}>
                     {resultInfo.conversion.batch.failed} not converted
@@ -1030,8 +1046,43 @@ function ReportProcessor({
                   <button type="button" onClick={exportBatchCsv} className="text-genie-primary underline-offset-2 hover:underline">
                     Download batch (.csv)
                   </button>
+                  {resultInfo.conversion.batch.reports.some((r) => r.mergedTable) && (
+                    <button type="button" onClick={exportMergedRaw} className="text-genie-primary underline-offset-2 hover:underline">
+                      Download merged raw files (.zip)
+                    </button>
+                  )}
                 </div>
               </div>
+              {resultInfo.conversion.batch.reports.some((r) => r.parts) && (
+                <div className="overflow-auto">
+                  <p className="mb-1 text-xs text-genie-text-secondary">
+                    Merged (test split by a power cut; parts joined in recorded order, capacity of the interrupted step added up; each merged raw file has all 5 steps and is saved with the run):
+                  </p>
+                  <table className="min-w-full text-left text-sm">
+                    <thead>
+                      <tr className="text-genie-text-secondary">
+                        <th className="py-1 pr-4 font-medium">cell No.</th>
+                        <th className="py-1 pr-4 font-medium">Cell</th>
+                        <th className="py-1 font-medium">Files</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultInfo.conversion.batch.reports
+                        .filter((r) => r.parts)
+                        .map((r) => (
+                          <tr key={r.cellNo} className="border-t border-genie-border">
+                            <td className="py-1 pr-4">{r.cellNo}</td>
+                            <td className="py-1 pr-4">{r.cellId}</td>
+                            <td className="py-1">
+                              {r.parts!.join(' → ')}
+                              {r.error !== null && <span className="text-genie-danger-fg"> (not converted, see below)</span>}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {resultInfo.conversion.batch.failed > 0 && (
                 <div className="overflow-auto">
                   <p className="mb-1 text-xs text-genie-text-secondary">
