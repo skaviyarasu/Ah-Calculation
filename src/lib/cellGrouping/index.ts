@@ -34,6 +34,7 @@ export type * from './types.ts';
 export {
   unassignedCells,
   unassignedRows,
+  actionableCells,
   nearestGroups,
   suggestSteps,
   applySuggestions,

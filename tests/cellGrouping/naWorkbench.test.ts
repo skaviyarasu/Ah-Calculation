@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { frameFromCsvText } from '../../src/lib/cellGrouping/csv.ts';
 import { parseRules } from '../../src/lib/cellGrouping/loadRules.ts';
 import {
+  actionableCells,
   adjacentBand,
   applySuggestions,
   nearestGroups,
@@ -107,6 +108,44 @@ describe('NA cells in a saved report', () => {
     const frame = run.frame;
     // 0-8-21: capacity fits C3, Fast_R 7.9 is far above R2
     expect(nearestGroups(frame, 6, rules)[0].name).toBe('C3R2');
+  });
+});
+
+describe('only complete NA cells without a group are worked on', () => {
+  const cells = unassignedCells([run], rules);
+
+  it('flags cells with missing steps or values as incomplete', () => {
+    expect(cells.map((c) => [c.cellId, c.complete])).toEqual([
+      ['0-8-17', true],
+      ['0-8-18', false],
+      ['0-8-21', true],
+    ]);
+    expect(cells[1].missing).toEqual(['3Capacity(mAh)', '4Fast_R(mOhm)', 'CC_Ratio_Corr(%)']);
+  });
+
+  it('a value missing without an error is incomplete too', () => {
+    const gap = { ...run, frame: frameFromCsvText(REPORT.replace('0-8-17,4,15097.0,5.6,99.95', '0-8-17,4,15097.0,,99.95')) };
+    const c = unassignedCells([gap], rules).find((x) => x.cellId === '0-8-17')!;
+    expect([c.complete, c.error, c.missing]).toEqual([false, '', ['4Fast_R(mOhm)']]);
+  });
+
+  it('flags NA cells the current rules already group (rerun pending) and leaves them out', () => {
+    expect(cells.every((c) => c.identifiedGroup === '')).toBe(true);
+    // the published rules now have an R3 band: 0-8-17 (Fast_R 5.6) is identified as C2R3
+    const withR3 = parseRules(
+      RULES.replace(
+        '  - name: "NA"',
+        '  - name: "C2R3"\n    filter:\n      all:\n        - { col: "3Capacity(mAh)", between: [14950, 15099.99] }\n        - { col: "4Fast_R(mOhm)", between: [5.51, 6.5] }\n    then:\n      action: keep\n\n  - name: "NA"',
+      ),
+    ).rules!;
+    const now = unassignedCells([run], withR3);
+    expect(now.map((c) => [c.cellId, c.identifiedGroup])).toEqual([
+      ['0-8-17', 'C2R3'],
+      ['0-8-18', ''],
+      ['0-8-21', ''],
+    ]);
+    expect(actionableCells(now).map((c) => c.cellId)).toEqual(['0-8-21']);
+    expect(suggestSteps(now, withR3).map((s) => s.cells)).toEqual([[`${run.label}: 0-8-21`]]);
   });
 });
 
