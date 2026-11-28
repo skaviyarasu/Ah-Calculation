@@ -3,6 +3,7 @@ import {
   actionableCells,
   applySuggestions,
   latestCellRows,
+  ruleColumns,
   CHEMISTRIES,
   compareRules,
   parseRules,
@@ -230,7 +231,12 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
       await Promise.all(Array.from({ length: PARALLEL }, worker));
       const order = new Map(picked.map((r, i) => [r.id, i]));
       loaded.sort((a, b) => order.get(a.runId)! - order.get(b.runId)!);
-      const latest = latestCellRows(loaded);
+      // repeat gradings: compare only the values the grouping rules use (capacity, Fast_R, CC ratio, ...)
+      const latest = latestCellRows(loaded, (chem) => {
+        const p = rules[chem];
+        const parsed = p ? parseRules(p.yaml_text).rules : undefined;
+        return parsed ? ruleColumns(parsed) : undefined;
+      });
       setRuns(latest.runs);
       setDuplicates(latest.duplicates);
       setRunsRead(loaded.length);
@@ -368,7 +374,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
             <ul className="mt-1 list-disc pl-5">
               {duplicates.map((d, i) => (
                 <li key={i}>
-                  <span className="font-medium text-genie-text">{d.cellId}</span> in {d.runLabel}: same test data as in {d.keptIn}
+                  <span className="font-medium text-genie-text">{d.cellId}</span> in {d.runLabel}: same grouping values as in {d.keptIn}
                 </li>
               ))}
             </ul>

@@ -225,17 +225,23 @@ export interface DuplicateCell {
   cellId: string;
   /** The older run whose copy is skipped. */
   runLabel: string;
-  /** The newest run with the same cell and test data, which is kept. */
+  /** The newest run with the same cell and the same values in the rule columns, which is kept. */
   keptIn: string;
 }
 
 /**
  * Counts each cell once when the same batch was graded more than once: a row is skipped when a
- * newer run (runs are given newest first) has a row with the same chemistry, cell ID and test data
- * (every column except the group and the position "cell No."). The same channel in another batch
- * has other test data, so it is kept. Runs left without rows are dropped.
+ * newer run (runs are given newest first) has a row with the same chemistry, cell ID, ERROR and
+ * values in the columns the grouping rules use (e.g. capacity, Fast_R, CC ratio). Other columns
+ * (times, file details) may differ between gradings and are not compared. The same channel in
+ * another batch has other values, so it is kept. Runs left without rows are dropped.
+ * ruleColumnsFor gives the rule columns per chemistry; without them every column is compared
+ * (except the group and the position "cell No.").
  */
-export function latestCellRows(runs: RunReport[]): { runs: RunReport[]; duplicates: DuplicateCell[] } {
+export function latestCellRows(
+  runs: RunReport[],
+  ruleColumnsFor: (chemistry: string) => string[] | undefined = () => undefined,
+): { runs: RunReport[]; duplicates: DuplicateCell[] } {
   const seen = new Map<string, string>();
   const duplicates: DuplicateCell[] = [];
   const kept: RunReport[] = [];
@@ -245,10 +251,13 @@ export function latestCellRows(runs: RunReport[]): { runs: RunReport[]; duplicat
       kept.push(run);
       continue;
     }
-    const cols = run.frame.columns.filter((c) => c !== run.groupCol && c !== 'cell No.');
+    const ruleCols = ruleColumnsFor(run.chemistry);
+    const cols = ruleCols?.length
+      ? [idCol, 'ERROR', ...ruleCols]
+      : run.frame.columns.filter((c) => c !== run.groupCol && c !== 'cell No.');
     const rows: number[] = [];
     for (let row = 0; row < run.frame.length; row++) {
-      const key = `${run.chemistry}\u0000${cols.map((c) => `${c}=${text(run.frame.data[c][row])}`).join('\u0000')}`;
+      const key = `${run.chemistry}\u0000${cols.map((c) => `${c}=${text(run.frame.data[c]?.[row])}`).join('\u0000')}`;
       const newer = seen.get(key);
       if (newer !== undefined) duplicates.push({ cellId: text(run.frame.data[idCol][row]), runLabel: run.label, keptIn: newer });
       else {

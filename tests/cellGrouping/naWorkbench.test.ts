@@ -242,6 +242,23 @@ describe('cells graded more than once', () => {
     expect(runs[1].frame.data.Number).toEqual(['0-8-17']);
   });
 
+  it('with the rule columns, compares only the values grouping uses', () => {
+    const cols = () => ['3Capacity(mAh)', '4Fast_R(mOhm)', 'CC_Ratio_Corr(%)'];
+    // re-graded copy with an extra non-rule column (e.g. a test time): still the same cell
+    const withTime: RunReport = {
+      ...run,
+      runId: 'r0',
+      label: 'older run',
+      frame: frameFromCsvText(REPORT.replace('ERROR,Category', 'ERROR,Category,Time').replace(/\n(0-8-\d+,.*)/g, '\n$1,2026-11-26')),
+    };
+    expect(latestCellRows([run, withTime]).runs).toHaveLength(2); // all columns: the extra column makes them differ
+    const byRule = latestCellRows([run, withTime], cols);
+    expect(byRule.runs.map((r) => r.runId)).toEqual(['r1']);
+    expect(byRule.duplicates).toHaveLength(7);
+    // a different value in a rule column is a different cell
+    expect(latestCellRows([run, otherBatch], cols).runs[1].frame.data.Number).toEqual(['0-8-17']);
+  });
+
   it('ignores the position column "cell No." when comparing', () => {
     const moved: RunReport = { ...run, runId: 'r0', label: 'moved', frame: frameFromCsvText(REPORT.replace('0-8-17,4,', '0-8-17,9,')) };
     expect(latestCellRows([run, moved]).runs).toHaveLength(1);
