@@ -24,6 +24,8 @@ export interface GradingRun {
   report_path: string | null;
   /** LFP per-cell reports: the raw per-channel files as one ZIP (database/24_cell_grouping_raw_inputs.sql). */
   raw_input_path?: string | null;
+  /** A rerun of the NA cells of this earlier run (database/25_cell_grouping_na_reruns.sql). */
+  rerun_of?: string | null;
 }
 
 export interface GradingHistoryProps {
@@ -98,6 +100,12 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
     const q = userFilter.trim().toLowerCase();
     return q ? runs.filter((r) => (r.user_email ?? '').toLowerCase().includes(q)) : runs;
   }, [runs, userFilter]);
+
+  /** Totals count each batch once: a run whose NA cells were rerun is replaced by its rerun. */
+  const counted = useMemo(() => {
+    const refreshed = new Set(runs.map((r) => r.rerun_of).filter(Boolean));
+    return shown.filter((r) => !refreshed.has(r.id));
+  }, [runs, shown]);
 
   const byChemistry = useMemo(() => {
     const m = new Map<string, number>();
@@ -210,17 +218,17 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
           </button>
         </div>
         <div className="flex flex-wrap gap-4">
-          <Kpi label="Runs" value={shown.length} caption={byChemistry} />
+          <Kpi label="Runs" value={shown.length} caption={shown.length > counted.length ? `${byChemistry} · ${shown.length - counted.length} refreshed by a rerun` : byChemistry} />
           <Kpi
             label="Cells graded"
-            value={sum(shown, (r) => r.cells_grouped)}
-            caption={`${sum(shown, (r) => r.cells_removed)} removed by preprocessing`}
+            value={sum(counted, (r) => r.cells_grouped)}
+            caption={`${sum(counted, (r) => r.cells_removed)} removed by preprocessing`}
           />
-          <Kpi label="Unassigned" value={sum(shown, (r) => r.unassigned_count)} caption="Outside every range" />
+          <Kpi label="Unassigned" value={sum(counted, (r) => r.unassigned_count)} caption="Outside every range" />
           <Kpi
             label="Rejected"
-            value={sum(shown, (r) => r.rejected_count)}
-            caption={`${sum(shown, (r) => r.cells_not_converted)} LFP reports not converted`}
+            value={sum(counted, (r) => r.rejected_count)}
+            caption={`${sum(counted, (r) => r.cells_not_converted)} LFP reports not converted`}
           />
         </div>
         {error && (
@@ -249,6 +257,8 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
               <tbody>
                 {shown.map((r) => {
                   const groups = Object.entries(r.group_counts);
+                  const original = r.rerun_of ? runs.find((x) => x.id === r.rerun_of) : undefined;
+                  const rerun = runs.find((x) => x.rerun_of === r.id);
                   const isOpen = open === r.id;
                   return (
                     <React.Fragment key={r.id}>
@@ -260,6 +270,22 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                         <td className="py-2 pr-4">{r.user_email ?? '—'}</td>
                         <td className="py-2 pr-4 font-medium">{r.chemistry}</td>
                         <td className="py-2 pr-4">
+                          {r.rerun_of && (
+                            <span
+                              className="mr-2 rounded-genie-md bg-genie-info-bg px-1.5 py-0.5 text-xs text-genie-info-fg"
+                              title={original ? `Rerun of the run of ${formatDateTime(original.created_at)}` : 'Rerun of an earlier run'}
+                            >
+                              NA rerun
+                            </span>
+                          )}
+                          {rerun && (
+                            <span
+                              className="mr-2 rounded-genie-md bg-genie-muted px-1.5 py-0.5 text-xs text-genie-text-secondary"
+                              title={`Its NA cells were rerun on ${formatDateTime(rerun.created_at)}`}
+                            >
+                              Refreshed
+                            </span>
+                          )}
                           <span className="block max-w-[240px] truncate" title={r.input_file_name}>
                             {r.input_file_name}
                           </span>
@@ -334,6 +360,13 @@ export default function GradingHistory({ listRuns, fileUrl }: GradingHistoryProp
                                 <p>Removed by preprocessing: {r.cells_removed}</p>
                                 {r.input_kind === 'per_cell_reports' && <p>Reports not converted: {r.cells_not_converted}</p>}
                                 <p>Unassigned: {r.unassigned_count}</p>
+                                {r.rerun_of && (
+                                  <p className="text-xs">
+                                    Rerun of the NA cells of the run of {original ? formatDateTime(original.created_at) : 'an earlier date'} with newer rules;
+                                    cells that already had a group kept it. Input: the original run's.
+                                  </p>
+                                )}
+                                {rerun && <p className="text-xs">Its NA cells were rerun on {formatDateTime(rerun.created_at)} (see that run for the refreshed report).</p>}
                                 <p>Rejected: {r.rejected_count}</p>
                                 {r.input_kind === 'per_cell_reports' && (
                                   <p className="text-xs">

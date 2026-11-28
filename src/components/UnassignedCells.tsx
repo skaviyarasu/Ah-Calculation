@@ -2,14 +2,15 @@ import React, { useMemo, useState } from 'react';
 import {
   applySuggestions,
   CHEMISTRIES,
-  DEFAULT_GROUP_COL,
+  compareRules,
   parseRules,
   readCsv,
+  reportGroupColumn,
   suggestSteps,
   unassignedCells,
   validateProposal,
 } from '../lib/cellGrouping/index.ts';
-import type { PublishedRules, RunReport, Suggestion, UnassignedCell, ValidationReport } from '../lib/cellGrouping/index.ts';
+import type { PublishedRules, RulesComparison, RunReport, Suggestion, UnassignedCell, ValidationReport } from '../lib/cellGrouping/index.ts';
 import type { GradingRun } from './GradingHistory';
 import iconChevronDown from '../assets/genie/icon-chevron-down.svg';
 
@@ -58,11 +59,6 @@ function proposalFileName(publishedName: string | undefined, chemistry: string):
   return `${base}-${new Date().toISOString().slice(0, 10)}.yaml`;
 }
 
-/** The run's group column in its saved report: "Category", else the last column. */
-function groupColumnOf(columns: string[]): string {
-  return columns.includes(DEFAULT_GROUP_COL) ? DEFAULT_GROUP_COL : columns[columns.length - 1];
-}
-
 function ChangeList({ title, tone, items }: { title: string; tone: 'success' | 'danger' | 'muted'; items: ValidationReport['changed'] }) {
   if (!items.length) return null;
   const color = tone === 'success' ? 'text-genie-success-fg' : tone === 'danger' ? 'text-genie-danger-fg' : 'text-genie-text-secondary';
@@ -90,6 +86,67 @@ function ChangeList({ title, tone, items }: { title: string; tone: 'success' | '
   );
 }
 
+function StepLines({ lines, tone }: { lines: string[]; tone?: string }) {
+  return (
+    <ul className={`font-mono text-xs leading-[1.5] ${tone ?? ''}`}>
+      {lines.map((l, i) => (
+        <li key={i}>{l}</li>
+      ))}
+    </ul>
+  );
+}
+
+/** What changes against the published rules, step by step. */
+function RulesDiff({ comparison: c }: { comparison: RulesComparison }) {
+  if (c.same) return <p className="text-sm text-genie-text-secondary">The proposed rules are the same as the published rules.</p>;
+  return (
+    <div className="rounded-genie-md border border-genie-border p-4">
+      <p className="mb-2 text-sm font-medium">Changes to the published rules</p>
+      <div className="flex flex-col gap-3 text-sm">
+        {c.added.map((a) => (
+          <div key={`a-${a.name}`}>
+            <p className="text-genie-success-fg">
+              + New group <span className="font-medium">{a.name}</span> (step {a.position})
+            </p>
+            <StepLines lines={a.lines} />
+          </div>
+        ))}
+        {c.changed.map((ch) => (
+          <div key={`c-${ch.name}`}>
+            <p className="text-genie-warning-fg">
+              ~ Changed <span className="font-medium">{ch.name}</span>
+            </p>
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <p className="text-xs text-genie-text-secondary">Published</p>
+                <StepLines lines={ch.before} tone="text-genie-text-secondary line-through" />
+              </div>
+              <div>
+                <p className="text-xs text-genie-text-secondary">Proposed</p>
+                <StepLines lines={ch.after} />
+              </div>
+            </div>
+          </div>
+        ))}
+        {c.removed.map((r) => (
+          <div key={`r-${r.name}`}>
+            <p className="text-genie-danger-fg">
+              − Removed <span className="font-medium">{r.name}</span>
+            </p>
+            <StepLines lines={r.lines} tone="text-genie-text-secondary line-through" />
+          </div>
+        ))}
+        {c.reordered && <p className="text-genie-warning-fg">The order of the steps changed: a cell gets the first group it matches.</p>}
+        {c.other.map((o) => (
+          <p key={o} className="text-genie-warning-fg">
+            {o}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function UnassignedCells({ listRuns, runFileText, loadRules, publishRules }: UnassignedCellsProps) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -105,7 +162,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
   const [workChem, setWorkChem] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [proposal, setProposal] = useState('');
-  const [validation, setValidation] = useState<{ text: string; report: ValidationReport } | null>(null);
+  const [validation, setValidation] = useState<{ text: string; report: ValidationReport; comparison: RulesComparison | null } | null>(null);
   const [publishing, setPublishing] = useState(false);
 
   const field = 'genie-field';
@@ -138,7 +195,9 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
       const toExclusive = to ? new Date(new Date(to).getTime() + 86400000).toISOString().slice(0, 10) : undefined;
       const [list, rules] = await Promise.all([listRuns({ from: from || undefined, to: toExclusive, chemistry: chemistry || undefined }), loadRules()]);
       setPublished(rules);
-      const withReport = list.filter((r) => r.report_path);
+      // a run whose NA cells were rerun is replaced by its rerun (database/25_cell_grouping_na_reruns.sql)
+      const rerunOf = new Set(list.map((r) => r.rerun_of).filter(Boolean));
+      const withReport = list.filter((r) => r.report_path && !rerunOf.has(r.id));
       const picked = withReport.slice(0, MAX_RUNS);
       if (withReport.length > MAX_RUNS) setNotice(`Only the newest ${MAX_RUNS} of ${withReport.length} runs were loaded; narrow the dates to see older runs.`);
       const loaded: RunReport[] = [];
@@ -150,7 +209,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
           const label = `${formatDate(r.created_at)} · ${r.input_file_name}`;
           try {
             const frame = readCsv(await runFileText(r.report_path!));
-            loaded.push({ runId: r.id, label, chemistry: r.chemistry, frame, groupCol: groupColumnOf(frame.columns) });
+            loaded.push({ runId: r.id, label, chemistry: r.chemistry, frame, groupCol: reportGroupColumn(frame.columns) });
           } catch (e) {
             failed.push(`${label}: ${(e as Error).message}`);
           }
@@ -195,7 +254,8 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
 
   const validate = () => {
     if (!workRules) return;
-    setValidation({ text: proposal, report: validateProposal(proposal, workRuns, workRules) });
+    const next = parseRules(proposal).rules;
+    setValidation({ text: proposal, report: validateProposal(proposal, workRuns, workRules), comparison: next ? compareRules(workRules, next) : null });
   };
 
   const report = validation?.report;
@@ -208,9 +268,10 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
     if (!publishRules || !p || !report) return;
     const moved = report.changed.length;
     const ok = window.confirm(
-      `Publish these ${workChem} rules? They are used for every grading from now on.\n\n` +
+      `Approve and publish these ${workChem} rules? They go live: every grading uses them from now on.\n\n` +
         `${report.nowGrouped.length} NA cell(s) get a group, ${report.stillUnassigned.length} stay NA` +
-        (moved ? `, and ${moved} already graded cell(s) would change group if graded again.` : '.'),
+        (moved ? `, and ${moved} already graded cell(s) would change group if graded again.` : '.') +
+        `\n\nRuns with NA cells can then be rerun from Group cells; cells that already have a group keep it.`,
     );
     if (!ok) return;
     setPublishing(true);
@@ -219,7 +280,10 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
       await publishRules(workChem, p.file_name, proposal);
       const fresh = await loadRules();
       setPublished(fresh);
-      setNotice(`Published new ${workChem} rules. The next gradings use them; saved runs keep their groups.`);
+      setNotice(
+        `Published new ${workChem} rules: they are live. Runs with NA cells now appear under "Runs with NA cells to refresh" on Group cells, ` +
+          `for operators and admins, to rerun their NA cells. Cells that already have a group keep it.`,
+      );
       setValidation(null);
       setSuggestions([]);
       setProposal('');
@@ -431,7 +495,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
                   Validate
                 </button>
                 <button type="button" onClick={publish} disabled={!canPublish || publishing} className="genie-btn-secondary">
-                  {publishing ? 'Publishing…' : `Publish as new ${workChem} rules`}
+                  {publishing ? 'Publishing…' : 'Approve and publish (go live)'}
                 </button>
                 <button
                   type="button"
@@ -491,6 +555,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
                       </ul>
                     </div>
                   )}
+                  {validation.comparison && <RulesDiff comparison={validation.comparison} />}
                   {report.warnings.length > 0 && (
                     <p className="text-xs text-genie-warning-fg">Warnings: {report.warnings.join('; ')}</p>
                   )}
