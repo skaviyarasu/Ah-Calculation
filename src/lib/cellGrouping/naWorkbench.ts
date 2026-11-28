@@ -190,24 +190,55 @@ export interface UnassignedCell {
   cellId: string;
   /** The ERROR column (why a cell was not converted), when the report has one. */
   error: string;
+  /** Rule columns with no value for this cell (e.g. a step of the test is missing). */
+  missing: string[];
+  /** Complete data: converted (no error) and a value in every column the rules check. Only these get rules generated. */
+  complete: boolean;
+  /** Group the given (current) rules already give this cell, '' if none: NA only in its saved report, a rerun is pending. */
+  identifiedGroup: string;
   nearest: NearestGroup[];
+}
+
+/** Columns the grouping steps check (keep steps with a filter). */
+export function ruleColumns(rules: RuleSet): string[] {
+  const cols = new Set<string>();
+  for (const st of rules.steps) if (st.filter) for (const c of st.filter.conditions) if (c.col !== undefined) cols.add(c.col);
+  return [...cols];
+}
+
+/** NA cells to write rules for: complete data and no group identified yet. */
+export function actionableCells(cells: UnassignedCell[]): UnassignedCell[] {
+  return cells.filter((c) => c.complete && !c.identifiedGroup);
 }
 
 /** Every NA cell of the runs, with its nearest groups under the given rules. */
 export function unassignedCells(runs: RunReport[], rules: RuleSet): UnassignedCell[] {
   const spans = columnSpans(rules);
+  const cols = ruleColumns(rules);
   return runs.flatMap((run) => {
     const idCol = cellIdColumn(run.frame);
     const frame = dropColumn(run.frame, run.groupCol);
+    let current: GroupingResult | null = null;
+    try {
+      current = applySteps(frame, rules, { groupCol: run.groupCol });
+    } catch {
+      current = null; // the rules cannot group this report (e.g. a column is missing): nothing identified
+    }
     return unassignedRows(run.frame, run.groupCol, rules).map((row) => {
-      const error = frame.columns.includes('ERROR') ? text(frame.data.ERROR[row]) : '';
+      const raw = frame.columns.includes('ERROR') ? text(frame.data.ERROR[row]) : '';
+      const error = raw === '---' ? '' : raw;
+      const missing = cols.filter((c) => !frame.columns.includes(c) || text(frame.data[c][row]).trim() === '');
+      const complete = error === '' && missing.length === 0;
       return {
+        missing,
+        complete,
+        identifiedGroup: current ? groupOf(current, row) : '',
         runId: run.runId,
         runLabel: run.label,
         chemistry: run.chemistry,
         row,
         cellId: idCol ? text(run.frame.data[idCol][row]) : `row ${row + 1}`,
-        error: error === '---' ? '' : error,
+        error,
         nearest: nearestGroups(frame, row, rules, 3, spans),
       };
     });
@@ -259,13 +290,14 @@ export function adjacentBand(lo: number, hi: number, x: number): [number, number
 /**
  * New steps for NA cells that miss their nearest group by exactly one numeric band: a copy of that
  * group with the band moved next to it so the cell falls in (cells needing the same band share one
- * suggestion). Cells that miss by more than one condition, or were not converted, get none.
+ * suggestion). Only cells with complete data and no group identified yet are used; cells that miss
+ * by more than one condition get none.
  */
 export function suggestSteps(cells: UnassignedCell[], rules: RuleSet): Suggestion[] {
   const byKey = new Map<string, Suggestion>();
   const used = new Set(rules.steps.map((s) => String(s.name)));
   let n = 0;
-  for (const cell of cells) {
+  for (const cell of actionableCells(cells)) {
     const best = cell.nearest[0];
     if (!best || best.failed.length !== 1) continue;
     const k = best.failed[0];

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  actionableCells,
   applySuggestions,
   CHEMISTRIES,
   compareRules,
@@ -172,7 +173,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
     return p ? parseRules(p.yaml_text).rules : undefined;
   };
 
-  const cells: UnassignedCell[] = useMemo(() => {
+  const allCells: UnassignedCell[] = useMemo(() => {
     if (!runs) return [];
     return [...new Set(runs.map((r) => r.chemistry))].flatMap((chem) => {
       const rules = rulesFor(chem);
@@ -181,6 +182,12 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs, published]);
 
+  /** Only NA cells with complete data and no group identified yet are shown and get rules generated. */
+  const cells = actionableCells(allCells);
+  /** NA in the saved report, but the published rules already give them a group: a rerun is pending. */
+  const identified = allCells.filter((c) => c.complete && c.identifiedGroup);
+  /** Not converted or a value missing (e.g. a step of the test is missing): ignored. */
+  const incomplete = allCells.filter((c) => !c.complete);
   const chemsWithNa = [...new Set(cells.map((c) => c.chemistry))];
   const cellsChecked = runs?.reduce((n, r) => n + r.frame.length, 0) ?? 0;
 
@@ -338,11 +345,12 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
             <Kpi label="Runs read" value={runs.length} caption={skipped.length ? `${skipped.length} report(s) could not be read` : ''} />
             <Kpi label="Cells checked" value={cellsChecked} />
             <Kpi
-              label="NA cells"
+              label="NA cells to group"
               value={cells.length}
-              caption={chemsWithNa.map((c) => `${c} ${cells.filter((x) => x.chemistry === c).length}`).join(' · ')}
+              caption={chemsWithNa.map((c) => `${c} ${cells.filter((x) => x.chemistry === c).length}`).join(' · ') || 'Complete data, no group yet'}
             />
-            <Kpi label="Not converted" value={cells.filter((c) => c.error).length} caption="Incomplete / unreadable tests" />
+            <Kpi label="Group identified" value={identified.length} caption="Not shown: rerun them on Group cells" />
+            <Kpi label="Incomplete data" value={incomplete.length} caption="Steps missing: ignored" />
           </div>
         )}
         {notice && <div className="rounded-genie-md border border-genie-info-border bg-genie-info-bg px-4 py-3 text-sm text-genie-info-fg">{notice}</div>}
@@ -362,8 +370,12 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
       {runs && (
         <section className="genie-card">
           <h3 className="genie-card-title">NA cells and their nearest group</h3>
+          <p className="text-xs leading-[1.4] text-genie-text-secondary">
+            Only cells with complete test data (all steps, a value in every column the rules check) and no group yet. Cells with missing steps,
+            and cells the published rules already group, are left out (listed below).
+          </p>
           {!cells.length ? (
-            <p className="text-sm text-genie-text-secondary">No NA cells in these runs.</p>
+            <p className="text-sm text-genie-text-secondary">No NA cells with complete data that still need a group.</p>
           ) : (
             <div className="w-full overflow-x-auto">
               <table className="w-full text-left text-sm leading-[1.4]">
@@ -414,6 +426,31 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
                 </tbody>
               </table>
             </div>
+          )}
+          {identified.length > 0 && (
+            <details className="text-xs text-genie-text-secondary">
+              <summary>Group identified, not shown ({identified.length}): rerun these runs on Group cells</summary>
+              <ul className="mt-1 list-disc pl-5">
+                {identified.map((c) => (
+                  <li key={`${c.runId}-${c.row}`}>
+                    {c.runLabel}: <span className="font-medium text-genie-text">{c.cellId}</span> → {c.identifiedGroup}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {incomplete.length > 0 && (
+            <details className="text-xs text-genie-text-secondary">
+              <summary>Incomplete data, ignored ({incomplete.length})</summary>
+              <ul className="mt-1 list-disc pl-5">
+                {incomplete.map((c) => (
+                  <li key={`${c.runId}-${c.row}`}>
+                    {c.runLabel}: <span className="font-medium text-genie-text">{c.cellId}</span> —{' '}
+                    {c.error ? `not converted: ${c.error}` : `no value for ${c.missing.join(', ')}`}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
         </section>
       )}
@@ -474,7 +511,7 @@ export default function UnassignedCells({ listRuns, runFileText, loadRules, publ
           )}
           {workRules && proposal === '' && suggestions.length === 0 && workCells.length > 0 && (
             <p className="text-sm text-genie-text-secondary">
-              Generate rules to get suggestions for NA cells that miss their nearest group by one range; cells that miss by more, or were not converted,
+              Generate rules to get suggestions for NA cells that miss their nearest group by one range; cells that miss by more
               need a rule written by hand (Edit the published rules).
             </p>
           )}
